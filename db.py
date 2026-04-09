@@ -54,6 +54,7 @@ ON CONFLICT (workflow_id) DO UPDATE SET
     end_time = EXCLUDED.end_time,
     input = EXCLUDED.input,
     output = EXCLUDED.output
+WHERE workflows.status NOT IN ('COMPLETED', 'FAILED', 'CANCELED', 'TERMINATED', 'TIMED_OUT')
 """
 
 
