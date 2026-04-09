@@ -25,7 +25,7 @@ async def list_chat_workflow_ids(client: Client) -> list[dict[str, str]]:
     Returns list of dicts with workflow_id, run_id, and status.
     """
     workflows = []
-    async for wf in client.list_workflows('WorkflowId LIKE "chat-%"'):
+    async for wf in client.list_workflows('WorkflowId STARTS_WITH "chat-"'):
         workflows.append({
             "workflow_id": wf.id,
             "run_id": wf.run_id,
