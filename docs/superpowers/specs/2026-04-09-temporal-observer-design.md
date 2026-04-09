@@ -99,7 +99,7 @@ For workflows still in RUNNING status, we re-fetch and update them (using `ON CO
 ```yaml
 services:
   postgres:
-    image: postgres:16
+    image: postgres:17
     environment:
       POSTGRES_DB: observer
       POSTGRES_USER: observer
