@@ -37,12 +37,23 @@ async def list_chat_workflow_ids(client: Client) -> list[dict[str, str]]:
 
 
 def _decode_payloads(payloads) -> Any | None:
-    """Decode the first payload from a Payloads message as JSON."""
+    """Decode payloads from a Temporal activity. Returns a single value if one payload, or a list if multiple."""
     try:
-        if payloads and len(payloads) > 0:
-            raw = payloads[0].data
-            return json.loads(raw)
-    except (json.JSONDecodeError, IndexError, AttributeError):
+        if not payloads or len(payloads) == 0:
+            return None
+        decoded = []
+        for p in payloads:
+            try:
+                decoded.append(json.loads(p.data))
+            except (json.JSONDecodeError, AttributeError):
+                try:
+                    decoded.append(p.data.decode("utf-8"))
+                except Exception:
+                    decoded.append(str(p.data))
+        if len(decoded) == 1:
+            return decoded[0]
+        return decoded
+    except (IndexError, AttributeError):
         pass
     return None
 
@@ -67,6 +78,7 @@ def parse_activities_from_history(events: list) -> list[dict[str, Any]]:
                 "activity_id": str(event.event_id),
                 "activity_type": attrs.activity_type.name,
                 "status": "SCHEDULED",
+                "attempt": 1,
                 "scheduled_time": _event_time_to_datetime(event.event_time),
                 "started_time": None,
                 "completed_time": None,
@@ -79,6 +91,7 @@ def parse_activities_from_history(events: list) -> list[dict[str, Any]]:
             sched_id = attrs.scheduled_event_id
             if sched_id in scheduled:
                 scheduled[sched_id]["started_time"] = _event_time_to_datetime(event.event_time)
+                scheduled[sched_id]["attempt"] = attrs.attempt
 
         elif event.event_type == EventType.EVENT_TYPE_ACTIVITY_TASK_COMPLETED:
             attrs = event.activity_task_completed_event_attributes
@@ -104,6 +117,53 @@ def parse_activities_from_history(events: list) -> list[dict[str, Any]]:
         activities.append(entry)
 
     return activities
+
+
+def parse_child_workflows_from_history(events: list) -> list[dict[str, Any]]:
+    """Parse child workflow events from a workflow history."""
+    initiated: dict[int, dict[str, Any]] = {}
+    children: list[dict[str, Any]] = []
+
+    for event in events:
+        if event.event_type == EventType.EVENT_TYPE_START_CHILD_WORKFLOW_EXECUTION_INITIATED:
+            attrs = event.start_child_workflow_execution_initiated_event_attributes
+            initiated[event.event_id] = {
+                "workflow_id": attrs.workflow_id,
+                "workflow_type": attrs.workflow_type.name,
+                "initiated_time": _event_time_to_datetime(event.event_time),
+            }
+
+        elif event.event_type == EventType.EVENT_TYPE_CHILD_WORKFLOW_EXECUTION_STARTED:
+            attrs = event.child_workflow_execution_started_event_attributes
+            init_id = attrs.initiated_event_id
+            if init_id in initiated:
+                initiated[init_id]["run_id"] = attrs.workflow_execution.run_id
+                initiated[init_id]["started_time"] = _event_time_to_datetime(event.event_time)
+
+        elif event.event_type == EventType.EVENT_TYPE_CHILD_WORKFLOW_EXECUTION_COMPLETED:
+            attrs = event.child_workflow_execution_completed_event_attributes
+            init_id = attrs.initiated_event_id
+            if init_id in initiated:
+                entry = initiated.pop(init_id)
+                entry["status"] = "COMPLETED"
+                entry["completed_time"] = _event_time_to_datetime(event.event_time)
+                children.append(entry)
+
+        elif event.event_type == EventType.EVENT_TYPE_CHILD_WORKFLOW_EXECUTION_FAILED:
+            attrs = event.child_workflow_execution_failed_event_attributes
+            init_id = attrs.initiated_event_id
+            if init_id in initiated:
+                entry = initiated.pop(init_id)
+                entry["status"] = "FAILED"
+                entry["completed_time"] = _event_time_to_datetime(event.event_time)
+                children.append(entry)
+
+    # Still-running children
+    for entry in initiated.values():
+        entry["status"] = "RUNNING"
+        children.append(entry)
+
+    return children
 
 
 async def fetch_workflow_history(client: Client, workflow_id: str, run_id: str) -> list:
