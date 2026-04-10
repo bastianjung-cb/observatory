@@ -7,7 +7,7 @@ import sys
 
 import psycopg
 
-from db import init_schema, is_workflow_terminal, upsert_activities, upsert_workflow
+from db import TERMINAL_STATUSES, init_schema, is_workflow_terminal, upsert_activities, upsert_workflow
 from temporal_client import (
     _decode_payloads,
     fetch_workflow_history,
@@ -56,6 +56,11 @@ async def run() -> None:
 
         for wf in workflows:
             wf_id = wf["workflow_id"]
+
+            if wf["status"] not in TERMINAL_STATUSES:
+                logger.debug("Skipping non-terminal workflow %s (status=%s)", wf_id, wf["status"])
+                skipped += 1
+                continue
 
             if is_workflow_terminal(conn, wf_id):
                 skipped += 1
