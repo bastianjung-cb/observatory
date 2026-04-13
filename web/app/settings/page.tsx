@@ -1,4 +1,15 @@
 import { getAllModelPricing, type ModelPricing } from "@/lib/queries/activities";
+
+function maskConnectionString(url: string | undefined): string {
+  if (!url) return "not set";
+  try {
+    const u = new URL(url);
+    if (u.password) u.password = "***";
+    return u.toString();
+  } catch {
+    return url.replace(/:([^@/]+)@/, ":***@");
+  }
+}
 import { getSyncStatus, getEntityCounts } from "@/lib/queries/settings";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -93,6 +104,26 @@ export default async function SettingsPage() {
           )}
         </div>
       )}
+
+      {/* Environment */}
+      <div className="rounded-lg border p-6 mb-8">
+        <h3 className="text-lg font-semibold mb-4">Environment</h3>
+        <div className="space-y-2">
+          {[
+            { label: "Observatory DB", value: maskConnectionString(process.env.OBSERVER_DATABASE_URL) },
+            { label: "App DB", value: maskConnectionString(process.env.APP_DATABASE_URL) },
+            { label: "Temporal Host", value: process.env.TEMPORAL_HOST || "not set" },
+            { label: "Temporal Namespace", value: process.env.TEMPORAL_NAMESPACE || "default" },
+            { label: "Temporal UI", value: process.env.TEMPORAL_UI_URL || "not set" },
+            { label: "App URL", value: process.env.APP_URL || "not set" },
+          ].map((item) => (
+            <div key={item.label} className="flex items-center justify-between rounded border px-3 py-2 text-sm">
+              <span className="font-medium">{item.label}</span>
+              <span className="font-mono text-xs text-muted-foreground truncate max-w-[60%] text-right">{item.value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {/* Auto Sync */}
       <div className="mb-8">
