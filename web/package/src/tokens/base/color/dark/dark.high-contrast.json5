@@ -1,0 +1,1079 @@
+/**
+ * Dark high contrast
+ * @extends ./dark.json
+ */
+{
+  base: {
+    color: {
+      black: {
+        $value: {
+          colorSpace: 'hsl',
+          components: [217.5, 80, 2],
+          hex: '#010409',
+        },
+        $type: 'color',
+        $extensions: {
+          'org.primer.figma': {
+            collection: 'base/color/dark-high-contrast',
+          },
+        },
+      },
+      blue: {
+        '0': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [203.8, 100, 89.6],
+            hex: '#caeaff',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '1': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [205.6, 100, 83.9],
+            hex: '#addcff',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '2': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [208.4, 100, 78.4],
+            hex: '#91cbff',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '3': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [210.4, 100, 72.2],
+            hex: '#71b7ff',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '4': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [210.6, 100, 68],
+            hex: '#5CACFF',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '5': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [210.5, 100, 62.5],
+            hex: '#409eff',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '6': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [212.9, 93.4, 58.2],
+            hex: '#318bf8',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '7': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [217.8, 89.5, 55.1],
+            hex: '#2672f3',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '8': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [218.4, 75.3, 47.6],
+            hex: '#1e60d5',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '9': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [218.7, 75.2, 39.6],
+            hex: '#194fb1',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+      },
+      green: {
+        '0': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [128, 82.4, 82.2],
+            hex: '#acf7b6',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '1': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [130.5, 80.8, 69.4],
+            hex: '#72f088',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '2': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [131.9, 71.6, 58.6],
+            hex: '#4ae168',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '3': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [134.1, 68.6, 50],
+            hex: '#28D751',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '4': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [137.1, 90.4, 41],
+            hex: '#0AC740',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '5': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [137.2, 90.5, 37.1],
+            hex: '#09b43a',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '6': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [138, 97.6, 32.2],
+            hex: '#02a232',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '7': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [138.9, 100, 27.5],
+            hex: '#008c2c',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '8': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [140.2, 100, 23.3],
+            hex: '#007728',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '9': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [140.8, 100, 19.2],
+            hex: '#006222',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+      },
+      yellow: {
+        '0': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [45.8, 92.1, 80.2],
+            hex: '#fbe59e',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '1': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [44.8, 94.8, 69.8],
+            hex: '#fbd669',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '2': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [44.3, 91.8, 61.6],
+            hex: '#f7c843',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '3': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [42.3, 86.5, 56.3],
+            hex: '#f0b72f',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '4': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [39.7, 84.6, 54.1],
+            hex: '#EDAA27',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '5': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [39.8, 84.4, 47.6],
+            hex: '#e09b13',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '6': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [39.1, 92.3, 40.8],
+            hex: '#c88508',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '7': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [38.5, 95.5, 34.9],
+            hex: '#ae7104',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '8': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [37.4, 97.3, 29.4],
+            hex: '#945d02',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '9': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [35.6, 100, 24.1],
+            hex: '#7b4900',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+      },
+      orange: {
+        '0': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [36, 100, 85.3],
+            hex: '#ffe1b4',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '1': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [36.2, 100, 76.3],
+            hex: '#ffcf86',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '2': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [34.3, 100, 67.1],
+            hex: '#ffb757',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '3': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [31.3, 99.1, 58.6],
+            hex: '#fe9a2d',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '4': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [29.6, 90.4, 55.1],
+            hex: '#F48B25',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '5': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [29.7, 80.8, 51],
+            hex: '#e7811d',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '6': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [28.6, 82.8, 45.7],
+            hex: '#d57014',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '7': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [27.8, 90, 39.4],
+            hex: '#bf5e0a',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '8': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [27.3, 100, 32.7],
+            hex: '#a74c00',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '9': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [25.2, 100, 28],
+            hex: '#8f3c00',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+      },
+      red: {
+        '0': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [5, 100, 92.9],
+            hex: '#ffdedb',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '1': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [2.1, 100, 89],
+            hex: '#ffc9c7',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '2': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [1.5, 100, 84.3],
+            hex: '#ffb1af',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '3': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [1.1, 100, 78.6],
+            hex: '#ff9492',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '4': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [0, 100, 75.1],
+            hex: '#FF8080',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '5': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [0.4, 100, 70.6],
+            hex: '#ff6a69',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '6': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [359.7, 100, 63.3],
+            hex: '#ff4445',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '7': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [358.4, 80.5, 53.7],
+            hex: '#e82a2f',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '8': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [355.8, 82.1, 43.9],
+            hex: '#cc1421',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '9': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [352.7, 98.9, 34.1],
+            hex: '#ad0116',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+      },
+      purple: {
+        '0': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [271.9, 100, 93.7],
+            hex: '#f0dfff',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '1': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [270.6, 100, 90],
+            hex: '#e6ccff',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '2': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [270, 100, 85.9],
+            hex: '#dbb7ff',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '3': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [267.8, 100, 81],
+            hex: '#cb9eff',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '4': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [265.7, 100, 78],
+            hex: '#BF8FFF',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '5': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [266.7, 100, 74.9],
+            hex: '#b87fff',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '6': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [263.9, 100, 71],
+            hex: '#a66bff',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '7': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [264.1, 97.8, 65.1],
+            hex: '#954ffd',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '8': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [263.9, 92.5, 58],
+            hex: '#8031f7',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '9': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [263.7, 73.4, 48.6],
+            hex: '#6921d7',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+      },
+      pink: {
+        '0': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [334.3, 100, 93.1],
+            hex: '#ffdceb',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '1': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [332.1, 100, 89],
+            hex: '#ffc7e1',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '2': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [331.5, 100, 83.9],
+            hex: '#ffadd4',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '3': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [329.5, 100, 77.6],
+            hex: '#ff8dc7',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '4': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [328.5, 89.9, 72.9],
+            hex: '#F87CBD',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '5': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [328.8, 80.1, 68.4],
+            hex: '#ef6eb1',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '6': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [327.5, 72.4, 61.6],
+            hex: '#e456a3',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '7': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [326.2, 62.3, 53.1],
+            hex: '#d23d91',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '8': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [325, 61.2, 44.5],
+            hex: '#b72c7d',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '9': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [323.6, 68.6, 36.3],
+            hex: '#9c1d6a',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+      },
+      coral: {
+        '0': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [14, 100, 91.6],
+            hex: '#ffded4',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '1': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [15.4, 100, 86.3],
+            hex: '#ffcbb9',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '2': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [14.4, 100, 80.4],
+            hex: '#ffb39b',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '3': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [11.5, 100, 74.5],
+            hex: '#ff967d',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '4': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [11.3, 97.4, 70],
+            hex: '#FD8468',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '5': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [11.4, 96.6, 64.9],
+            hex: '#fc704f',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '6': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [9.2, 92.5, 58.4],
+            hex: '#f75133',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '7': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [8.2, 75.5, 50.4],
+            hex: '#e03b21',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '8': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [6.7, 83.3, 42.4],
+            hex: '#c62612',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+        '9': {
+          $value: {
+            colorSpace: 'hsl',
+            components: [7.5, 100, 33.1],
+            hex: '#a91500',
+          },
+          $type: 'color',
+          $extensions: {
+            'org.primer.figma': {
+              collection: 'base/color/dark-high-contrast',
+            },
+          },
+        },
+      },
+    },
+  },
+}

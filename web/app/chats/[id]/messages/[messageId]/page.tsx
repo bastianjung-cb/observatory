@@ -124,6 +124,8 @@ export default async function ActivityPage({
           { key: "Space", action: "Prompt view (invokeModel) / JSON" },
           { key: "F", action: "Edit filter" },
           { key: "T", action: "Bypass filter" },
+          { key: "I", action: "invokeModel only" },
+          { key: "R", action: "Reverse order" },
         ]} />
       </div>
 

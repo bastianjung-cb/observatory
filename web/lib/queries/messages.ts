@@ -41,7 +41,10 @@ export async function getMessages(chatId: string): Promise<MessageRow[]> {
        m."order",
        m.role,
        m.metadata,
-       m.created_at,
+       COALESCE(
+         (SELECT w.end_time FROM workflows w WHERE w.message_id = m.id LIMIT 1),
+         m.created_at
+       ) as created_at,
        (
          SELECT string_agg(mp.content->>'text', E'\n' ORDER BY mp."order")
          FROM message_parts mp

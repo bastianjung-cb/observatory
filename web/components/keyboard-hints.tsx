@@ -19,7 +19,6 @@ export function KeyboardHints({ shortcuts }: { shortcuts: Shortcut[] }) {
       prevRef.current = serialized;
       setShortcuts(shortcuts);
     }
-    return () => setShortcuts([]);
   }, [shortcuts, setShortcuts]);
 
   return null;

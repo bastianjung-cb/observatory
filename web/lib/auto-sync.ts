@@ -1,10 +1,12 @@
 import { exec } from "child_process";
+import { getSetting, setSetting } from "@/lib/queries/settings";
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
 let enabled = false;
 let lastRun: Date | null = null;
 let lastResult: "success" | "error" | null = null;
 let nextRun: Date | null = null;
+let initialized = false;
 
 const SYNC_COMMAND = "cd /mnt/observer_app && uv run python main.py --skip-migrations";
 const INTERVAL_MS = 60 * 60 * 1000; // 1 hour
@@ -23,7 +25,7 @@ function runSync() {
   });
 }
 
-export function startAutoSync() {
+function startTimer() {
   if (intervalId) return;
   enabled = true;
   runSync();
@@ -35,7 +37,7 @@ export function startAutoSync() {
   console.log("[auto-sync] Enabled (every 60 min)");
 }
 
-export function stopAutoSync() {
+function stopTimer() {
   if (intervalId) {
     clearInterval(intervalId);
     intervalId = null;
@@ -43,6 +45,25 @@ export function stopAutoSync() {
   enabled = false;
   nextRun = null;
   console.log("[auto-sync] Disabled");
+}
+
+export async function initAutoSync() {
+  if (initialized) return;
+  initialized = true;
+  const value = await getSetting("auto_sync_enabled");
+  if (value === "true") {
+    startTimer();
+  }
+}
+
+export async function startAutoSync() {
+  startTimer();
+  await setSetting("auto_sync_enabled", "true");
+}
+
+export async function stopAutoSync() {
+  stopTimer();
+  await setSetting("auto_sync_enabled", "false");
 }
 
 export function getAutoSyncStatus() {

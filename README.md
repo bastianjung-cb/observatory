@@ -45,7 +45,16 @@ cd web && npm install && cd ..
 
 ## Configuration
 
-All config is in `.env` at the project root. Both Python and the Next.js app read from it.
+All config is in a single `.env` file at the project root. Both the Python sync scripts and the Next.js web app read from it. Copy `.env` and fill in your values.
+
+| Variable | Required | Used by | Description |
+|---|---|---|---|
+| `OBSERVER_DATABASE_URL` | Yes | Python + Web | Postgres connection for the observer DB (our local store). Default: `postgresql://observer:observer@localhost:5436/observer` |
+| `APP_DATABASE_URL` | Yes | Python | Postgres connection for the cellbyte app DB (source for users, chats, messages). |
+| `TEMPORAL_HOST` | Yes | Python | Temporal gRPC address. Default: `localhost:7233` |
+| `TEMPORAL_NAMESPACE` | No | Python + Web | Temporal namespace. Default: `default` |
+| `TEMPORAL_UI_URL` | No | Web | Base URL of the Temporal UI. Enables the "Open in Temporal" button on messages. |
+| `APP_URL` | No | Web | URL of the main product. Shows a "Chat now" button in the header linking to it. |
 
 ```env
 # Observer Database (our local store)
@@ -58,10 +67,10 @@ APP_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/cellbyte
 TEMPORAL_HOST=localhost:7233
 TEMPORAL_NAMESPACE=default
 
-# Temporal UI (for deep-link button in the app)
+# Temporal UI (for deep-link button on messages)
 TEMPORAL_UI_URL=https://your-temporal-ui.example.com
 
-# App URL (for "Chat now" button linking to the main product)
+# App URL (for "Chat now" button in the header)
 APP_URL=https://your-app.example.com/
 ```
 
@@ -204,7 +213,9 @@ The app is keyboard-first. Arrow keys navigate, right arrow drills in, left arro
 | `↑` `↓` | Navigate messages |
 | `→` / `Enter` | View workflow steps |
 | `←` / `Esc` | Back to chats |
+| `Shift+↑` / `Shift+↓` | Jump to first / last |
 | `E` | Toggle full text / preview |
+| `R` | Reverse message order |
 | `W` | Open workflow in Temporal UI |
 
 ### Activity Steps (`/chats/[id]/messages/[messageId]`)
@@ -215,8 +226,11 @@ The app is keyboard-first. Arrow keys navigate, right arrow drills in, left arro
 | `Space` | Prompt view (invokeModel) / JSON view |
 | `→` / `Enter` | JSON view / enter child workflow |
 | `←` / `Esc` | Back / close overlay |
+| `Shift+↑` / `Shift+↓` | Jump to first / last |
 | `F` | Toggle activity type filter |
 | `T` | Bypass filter (show all) |
+| `I` | Show invokeModel calls only |
+| `R` | Reverse activity order |
 
 ### Prompt View (invokeModel overlay)
 
@@ -261,7 +275,7 @@ The app is keyboard-first. Arrow keys navigate, right arrow drills in, left arro
 
 Enable hourly background sync from the **Settings** page. When enabled, the Next.js server runs the sync pipeline every 60 minutes. The first sync runs immediately on enable. Status (last run time, success/error) is shown on the Settings page.
 
-Note: auto-sync state lives in server memory — it resets when the server restarts. Re-enable it after a restart if needed.
+The enabled/disabled state is persisted in the database (`settings` table), so it survives server restarts.
 
 ### Strategy
 

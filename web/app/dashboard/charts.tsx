@@ -125,7 +125,7 @@ export function DashboardCharts({
       {/* Daily Cost & Tokens Area Charts */}
       <div className="rounded-xl border bg-card p-6">
         <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-6">
-          Daily Cost &amp; Tokens (last 8 weeks)
+          Daily Cost &amp; Tokens
         </h3>
         {dailyData.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-12">No data for this period</p>
@@ -213,7 +213,7 @@ export function DashboardCharts({
       {/* User Cost + Messages Horizontal Bar Chart */}
       <div className="rounded-xl border bg-card p-6">
         <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-          Cost &amp; Messages by User (last 4 weeks, top 20)
+          Cost &amp; Messages by User (top 20)
         </h3>
         <div className="flex items-center gap-4 mb-4">
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground">

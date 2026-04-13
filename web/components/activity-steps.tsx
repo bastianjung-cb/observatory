@@ -93,24 +93,25 @@ function colorizeJson(json: string): { text: string; className: string }[] {
       tokens.push({ text: json.slice(lastIndex, match.index), className: "" });
     }
     if (match[1] && match[2]) {
-      // Key: string followed by colon
-      tokens.push({ text: match[1], className: "text-purple-700 dark:text-purple-400" });
-      tokens.push({ text: match[2], className: "text-gray-500 dark:text-gray-400" });
+      // Key — dark teal
+      tokens.push({ text: match[1], className: "text-[#364F6B] dark:text-[#6b99b8]" });
+      // Colon
+      tokens.push({ text: match[2], className: "text-[#6b7b8d] dark:text-[#6b7b8d]" });
     } else if (match[3]) {
-      // String value
-      tokens.push({ text: match[3], className: "text-green-700 dark:text-green-400" });
+      // String — cyan / cyan
+      tokens.push({ text: match[3], className: "text-[#3FC1C9] dark:text-[#5DD8E0]" });
     } else if (match[4]) {
-      // Number
-      tokens.push({ text: match[4], className: "text-blue-700 dark:text-sky-400" });
+      // Number — hot pink / hot pink
+      tokens.push({ text: match[4], className: "text-[#FC5185] dark:text-[#FC5185]" });
     } else if (match[5]) {
-      // Boolean
-      tokens.push({ text: match[5], className: "text-amber-700 dark:text-amber-400" });
+      // Boolean — warm amber
+      tokens.push({ text: match[5], className: "text-[#FF9760] dark:text-[#FF9760]" });
     } else if (match[6]) {
-      // Null
-      tokens.push({ text: match[6], className: "text-gray-400 dark:text-gray-500" });
+      // Null — deep amber
+      tokens.push({ text: match[6], className: "text-[#FF9760] dark:text-[#FF9760]" });
     } else if (match[7]) {
       // Punctuation
-      tokens.push({ text: match[7], className: "text-gray-500 dark:text-gray-400" });
+      tokens.push({ text: match[7], className: "text-[#364F6B] dark:text-[#6b99b8]" });
     } else if (match[8]) {
       // Whitespace
       tokens.push({ text: match[8], className: "" });
@@ -261,10 +262,10 @@ interface PromptContentPart {
 }
 
 const roleColors: Record<string, { bg: string; border: string; badge: string }> = {
-  system: { bg: "bg-slate-50 dark:bg-slate-900/50", border: "border-slate-200 dark:border-slate-700", badge: "bg-slate-600 text-white" },
-  user: { bg: "bg-blue-50 dark:bg-blue-950/40", border: "border-blue-200 dark:border-blue-800", badge: "bg-blue-600 text-white" },
-  assistant: { bg: "bg-emerald-50 dark:bg-emerald-950/40", border: "border-emerald-200 dark:border-emerald-800", badge: "bg-emerald-600 text-white" },
-  tool: { bg: "bg-amber-50 dark:bg-amber-950/40", border: "border-amber-200 dark:border-amber-800", badge: "bg-amber-600 text-white" },
+  system: { bg: "bg-[#f5f5f5] dark:bg-transparent", border: "border-[#364F6B]/20 dark:border-[#6b99b8]/30", badge: "bg-[#364F6B] text-white" },
+  user: { bg: "bg-[#3FC1C9]/5 dark:bg-transparent", border: "border-[#3FC1C9]/20 dark:border-[#3FC1C9]/30", badge: "bg-[#3FC1C9] text-white" },
+  assistant: { bg: "bg-[#FC5185]/5 dark:bg-transparent", border: "border-[#FC5185]/20 dark:border-[#FC5185]/30", badge: "bg-[#FC5185] text-white" },
+  tool: { bg: "bg-[#FF9760]/5 dark:bg-transparent", border: "border-[#FF9760]/20 dark:border-[#FF9760]/30", badge: "bg-[#FF9760] text-white" },
 };
 
 function extractTextFromContent(content: string | PromptContentPart[]): string {
@@ -304,12 +305,12 @@ function renderContentPart(part: PromptContentPart, i: number) {
   }
   if (part.type === "tool-call") {
     return (
-      <div key={i} className="mt-2 rounded border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-950/40 p-3">
+      <div key={i} className="mt-2 rounded border border-[#364F6B]/15 dark:border-[#6b99b8]/30 bg-[#364F6B]/3 dark:bg-transparent p-3">
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-violet-600 text-white">TOOL CALL</span>
+          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#364F6B]/80 dark:bg-[#6b99b8]/80 text-white">TOOL CALL</span>
           <span className="font-mono text-sm font-medium">{part.toolName}</span>
         </div>
-        <pre className="text-xs font-json whitespace-pre-wrap mt-1 text-violet-900 dark:text-violet-300">
+        <pre className="text-xs font-json whitespace-pre-wrap mt-1 text-[#364F6B] dark:text-[#6b99b8]">
           {typeof part.input === "string" ? part.input : JSON.stringify(part.input, null, 2)}
         </pre>
       </div>
@@ -317,11 +318,11 @@ function renderContentPart(part: PromptContentPart, i: number) {
   }
   if (part.type === "tool-result") {
     return (
-      <div key={i} className="mt-2 rounded border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 p-3">
+      <div key={i} className="mt-2 rounded border border-[#364F6B]/15 dark:border-[#6b99b8]/30 bg-[#364F6B]/5 dark:bg-transparent p-3">
         <div className="flex items-center gap-2 mb-1">
-          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-600 text-white">TOOL RESULT</span>
+          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#364F6B] dark:bg-[#6b99b8] text-white">TOOL RESULT</span>
         </div>
-        <pre className="text-xs font-json whitespace-pre-wrap mt-1 text-amber-900 dark:text-amber-300 max-h-48 overflow-auto">
+        <pre className="text-xs font-json whitespace-pre-wrap mt-1 text-[#364F6B] dark:text-[#6b99b8] max-h-48 overflow-auto">
           {JSON.stringify(part.output, null, 2)}
         </pre>
       </div>
@@ -384,6 +385,7 @@ function PromptView({
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key !== "Escape" && (e.metaKey || e.ctrlKey || e.altKey)) return;
       if (e.key === "Escape") {
         e.preventDefault();
         onClose();
@@ -502,6 +504,7 @@ export function ActivitySteps({
   const router = useRouter();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [overlayMode, setOverlayMode] = useState<"json" | "prompt" | null>(null);
+  const [reversed, setReversed] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [overlaySearch, setOverlaySearch] = useState("");
   const [activeMatch, setActiveMatch] = useState(0);
@@ -514,8 +517,11 @@ export function ActivitySteps({
     () => new Set(allTypes.filter((t) => !DEFAULT_WHITELIST.has(t)))
   );
   const [filterBypassed, setFilterBypassed] = useState(false);
+  const [invokeOnly, setInvokeOnly] = useState(false);
 
-  const filteredActivities = filterBypassed
+  const filteredActivities = invokeOnly
+    ? activities.filter((a) => a.activity_type === "invokeModel")
+    : filterBypassed
     ? activities
     : activities.filter((a) => !hiddenTypes.has(a.activity_type));
 
@@ -533,8 +539,10 @@ export function ActivitySteps({
     })),
   ];
 
+  const displayItems = reversed ? [...listItems].reverse() : listItems;
+
   const openOverlay = (index: number, mode: "json" | "prompt") => {
-    const item = listItems[index];
+    const item = displayItems[index];
     if (!item || item.kind !== "activity") return;
     const activity = item.data;
     if (expandedId === activity.activity_id && overlayMode === mode) {
@@ -556,7 +564,7 @@ export function ActivitySteps({
   };
 
   const { selectedIndex } = useKeyboardNav({
-    itemCount: listItems.length,
+    itemCount: displayItems.length,
     storageKey: `activities:${chatId}:${messageId}`,
     onEscape: () => {
       if (expandedId) {
@@ -569,7 +577,7 @@ export function ActivitySteps({
       }
     },
     onEnter: (index) => {
-      const item = listItems[index];
+      const item = displayItems[index];
       if (!item) return;
       if (item.kind === "child") {
         // Drill into child workflow
@@ -580,7 +588,7 @@ export function ActivitySteps({
       }
     },
     onSpace: (index) => {
-      const item = listItems[index];
+      const item = displayItems[index];
       if (!item) return;
       if (item.kind === "child") {
         // Space also drills into child
@@ -603,6 +611,7 @@ export function ActivitySteps({
         e.target instanceof HTMLTextAreaElement
       )
         return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (expandedId) {
         // When overlay is open, F focuses the search box
         if (e.key === "f" || e.key === "F") {
@@ -620,6 +629,14 @@ export function ActivitySteps({
         e.preventDefault();
         setFilterBypassed((prev) => !prev);
       }
+      if (e.key === "r" || e.key === "R") {
+        e.preventDefault();
+        setReversed((prev) => !prev);
+      }
+      if (e.key === "i" || e.key === "I") {
+        e.preventDefault();
+        setInvokeOnly((prev) => !prev);
+      }
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
@@ -630,7 +647,7 @@ export function ActivitySteps({
     const container = selectedRef.current?.closest("[class*='overflow-auto']");
     if (selectedIndex === 0) {
       container?.scrollTo(0, 0);
-    } else if (selectedIndex === listItems.length - 1) {
+    } else if (selectedIndex === displayItems.length - 1) {
       container?.scrollTo(0, container.scrollHeight);
     } else {
       selectedRef.current?.scrollIntoView({ block: "nearest" });
@@ -656,7 +673,7 @@ export function ActivitySteps({
           <PopoverTrigger
             className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3"
           >
-            {filterBypassed ? "Filter OFF" : `Filter (${listItems.length}/${activities.length + childWorkflows.length})`}
+            {invokeOnly ? "invokeModel only" : filterBypassed ? "Filter OFF" : `Filter (${displayItems.length}/${activities.length + childWorkflows.length})`}
           </PopoverTrigger>
           <PopoverContent className="w-64">
             <div className="space-y-2">
@@ -696,12 +713,12 @@ export function ActivitySteps({
       </div>
 
       <div className="space-y-2 py-1">
-        {listItems.length === 0 ? (
+        {displayItems.length === 0 ? (
           <div className="text-center text-muted-foreground py-8">
             No activities (adjust filter)
           </div>
         ) : (
-          listItems.map((item, index) => {
+          displayItems.map((item, index) => {
             if (item.kind === "child") {
               const child = item.data;
               return (
@@ -779,9 +796,12 @@ export function ActivitySteps({
                       ${Number(activity.cost_usd).toFixed(4)}
                     </span>
                   )}
-                  <span className="ml-auto shrink-0 tabular-nums text-xs text-muted-foreground">
-                    {formatDuration(activity.duration_ms)}
-                  </span>
+                  <div className="ml-auto shrink-0 text-right" suppressHydrationWarning>
+                    <span className="tabular-nums text-xs">{formatDuration(activity.duration_ms)}</span>
+                    {activity.scheduled_time && (
+                      <div className="text-[10px] text-muted-foreground" suppressHydrationWarning>{new Date(activity.scheduled_time).toLocaleTimeString()}</div>
+                    )}
+                  </div>
                 </div>
                 <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-x-6 px-4 pb-2.5">
                   <p className="truncate font-mono text-[11px] text-muted-foreground/70">
@@ -882,7 +902,7 @@ export function ActivitySteps({
                   </p>
                   <CopyButton text={activity.input ? JSON.stringify(activity.input, null, 2) : "null"} />
                 </div>
-                <div className="flex-1 overflow-auto p-4">
+                <div className="flex-1 overflow-auto p-4 bg-background">
                   <HighlightedJson data={activity.input} search={overlaySearch} activeMatchIndex={activeMatch} matchOffset={0} />
                 </div>
               </div>
@@ -893,7 +913,7 @@ export function ActivitySteps({
                   </p>
                   <CopyButton text={activity.output ? JSON.stringify(activity.output, null, 2) : "null"} />
                 </div>
-                <div className="flex-1 overflow-auto p-4">
+                <div className="flex-1 overflow-auto p-4 bg-background">
                   <HighlightedJson data={activity.output} search={overlaySearch} activeMatchIndex={activeMatch} matchOffset={inputMatches} />
                 </div>
               </div>

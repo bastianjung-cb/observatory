@@ -79,6 +79,11 @@ CREATE TABLE IF NOT EXISTS sync_state (
     last_sync_at TIMESTAMPTZ NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS model_pricing (
     id               SERIAL PRIMARY KEY,
     model_id         TEXT UNIQUE NOT NULL,
@@ -307,5 +312,22 @@ def update_last_sync(conn: psycopg.Connection, entity: str, ts: datetime) -> Non
             "INSERT INTO sync_state (entity, last_sync_at) VALUES (%s, %s) "
             "ON CONFLICT (entity) DO UPDATE SET last_sync_at = EXCLUDED.last_sync_at",
             (entity, ts),
+        )
+    conn.commit()
+
+
+def get_setting(conn: psycopg.Connection, key: str) -> str | None:
+    with conn.cursor() as cur:
+        cur.execute("SELECT value FROM settings WHERE key = %s", (key,))
+        row = cur.fetchone()
+    return row[0] if row else None
+
+
+def set_setting(conn: psycopg.Connection, key: str, value: str) -> None:
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO settings (key, value) VALUES (%s, %s) "
+            "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+            (key, value),
         )
     conn.commit()

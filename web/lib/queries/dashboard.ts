@@ -16,13 +16,13 @@ export interface UserCost {
 }
 
 export interface CostSummaryCard {
-  total_cost_4w: number;
-  total_tokens_4w: number;
-  total_llm_calls_4w: number;
+  total_cost: number;
+  total_tokens: number;
+  total_llm_calls: number;
   total_chats: number;
 }
 
-export async function getDailyCosts(days = 56): Promise<DailyCost[]> {
+export async function getDailyCosts(from: string, to: string): Promise<DailyCost[]> {
   const result = await pool.query(
     `WITH daily AS (
        SELECT
@@ -42,7 +42,8 @@ export async function getDailyCosts(days = 56): Promise<DailyCost[]> {
        FROM activities a
        LEFT JOIN model_pricing mp ON mp.model_id = a.input->>'modelId'
        WHERE a.activity_type = 'invokeModel'
-         AND a.scheduled_time >= NOW() - ($1 || ' days')::interval
+         AND a.scheduled_time >= $1::timestamptz
+         AND a.scheduled_time < ($2::timestamptz + interval '1 day')
        GROUP BY day_start
        ORDER BY day_start
      )
@@ -53,12 +54,12 @@ export async function getDailyCosts(days = 56): Promise<DailyCost[]> {
        total_output_tokens::bigint AS total_output_tokens,
        (total_input_tokens + total_output_tokens)::bigint AS total_tokens
      FROM daily`,
-    [days]
+    [from, to]
   );
   return result.rows;
 }
 
-export async function getUserCosts(weeks = 4, limit = 20): Promise<UserCost[]> {
+export async function getUserCosts(from: string, to: string, limit = 20): Promise<UserCost[]> {
   const result = await pool.query(
     `SELECT
        COALESCE(u.given_name || ' ' || u.family_name, u.email, 'Unknown') AS user_name,
@@ -80,16 +81,17 @@ export async function getUserCosts(weeks = 4, limit = 20): Promise<UserCost[]> {
      JOIN workflows w ON w.message_id = m.id
      JOIN activities a ON a.workflow_id = w.workflow_id AND a.activity_type = 'invokeModel'
      LEFT JOIN model_pricing mp ON mp.model_id = a.input->>'modelId'
-     WHERE a.scheduled_time >= NOW() - ($1 || ' weeks')::interval
+     WHERE a.scheduled_time >= $1::timestamptz
+       AND a.scheduled_time < ($2::timestamptz + interval '1 day')
      GROUP BY u.id, u.given_name, u.family_name, u.email
      ORDER BY total_cost DESC
-     LIMIT $2`,
-    [weeks, limit]
+     LIMIT $3`,
+    [from, to, limit]
   );
   return result.rows;
 }
 
-export async function getCostSummary(weeks = 4): Promise<CostSummaryCard> {
+export async function getCostSummary(from: string, to: string): Promise<CostSummaryCard> {
   const result = await pool.query(
     `SELECT
        COALESCE(SUM(
@@ -101,12 +103,12 @@ export async function getCostSummary(weeks = 4): Promise<CostSummaryCard> {
              + COALESCE((a.output->'usage'->'outputTokens'->>'reasoning')::numeric, 0) * COALESCE(mp.reasoning_price, mp.output_price)
            ) / 1000000.0
          ELSE 0 END
-       ), 0)::float AS total_cost_4w,
+       ), 0)::float AS total_cost,
        COALESCE(SUM(
          (a.output->'usage'->'inputTokens'->>'total')::bigint
          + (a.output->'usage'->'outputTokens'->>'total')::bigint
-       ), 0)::bigint AS total_tokens_4w,
-       COUNT(*)::int AS total_llm_calls_4w,
+       ), 0)::bigint AS total_tokens,
+       COUNT(*)::int AS total_llm_calls,
        COUNT(DISTINCT c.id)::int AS total_chats
      FROM activities a
      JOIN workflows w ON w.workflow_id = a.workflow_id
@@ -114,8 +116,9 @@ export async function getCostSummary(weeks = 4): Promise<CostSummaryCard> {
      JOIN chats c ON c.id = m.chat_id
      LEFT JOIN model_pricing mp ON mp.model_id = a.input->>'modelId'
      WHERE a.activity_type = 'invokeModel'
-       AND a.scheduled_time >= NOW() - ($1 || ' weeks')::interval`,
-    [weeks]
+       AND a.scheduled_time >= $1::timestamptz
+       AND a.scheduled_time < ($2::timestamptz + interval '1 day')`,
+    [from, to]
   );
   return result.rows[0];
 }

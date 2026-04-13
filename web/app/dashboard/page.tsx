@@ -1,5 +1,6 @@
 import { getDailyCosts, getUserCosts, getCostSummary } from "@/lib/queries/dashboard";
 import { DashboardCharts } from "./charts";
+import { DateRangePicker } from "./date-range-picker";
 import { KeyboardHints } from "@/components/keyboard-hints";
 
 function formatTokens(n: number): string {
@@ -10,18 +11,54 @@ function formatTokens(n: number): string {
 }
 
 function formatCost(n: number): string {
+  if (!n || n === 0) return "$0";
   if (n >= 1) return `$${n.toFixed(2)}`;
-  if (n >= 0.01) return `$${n.toFixed(2)}`;
   return `$${n.toFixed(4)}`;
 }
 
-export default async function DashboardPage() {
+function toLocalDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function parseLocalDate(s: string): Date {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function defaultFrom(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 56);
+  return toLocalDateStr(d);
+}
+
+function defaultTo(): string {
+  return toLocalDateStr(new Date());
+}
+
+function formatRangeLabel(from: string, to: string): string {
+  const f = parseLocalDate(from);
+  const t = parseLocalDate(to);
+  return `${f.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${t.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+}
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ from?: string; to?: string }>;
+}) {
+  const params = await searchParams;
+  const from = params.from || defaultFrom();
+  const to = params.to || defaultTo();
+
   let dailyCosts, userCosts, summary;
   try {
     [dailyCosts, userCosts, summary] = await Promise.all([
-      getDailyCosts(56),
-      getUserCosts(4, 20),
-      getCostSummary(4),
+      getDailyCosts(from, to),
+      getUserCosts(from, to, 20),
+      getCostSummary(from, to),
     ]);
   } catch {
     return (
@@ -39,11 +76,18 @@ export default async function DashboardPage() {
     );
   }
 
+  const rangeLabel = formatRangeLabel(from, to);
+
   return (
     <div className="flex flex-col -mx-6 -mt-6 -mb-6" style={{ height: "calc(100vh - 90px)" }}>
       <div className="shrink-0 bg-background border-b px-6 py-3">
-        <h2 className="text-lg font-bold">Usage Dashboard</h2>
-        <p className="text-sm text-muted-foreground">Cost and token usage overview</p>
+        <div className="flex items-center justify-between mb-2">
+          <div>
+            <h2 className="text-lg font-bold">Usage Dashboard</h2>
+            <p className="text-xs text-muted-foreground">{rangeLabel}</p>
+          </div>
+          <DateRangePicker from={from} to={to} />
+        </div>
         <KeyboardHints shortcuts={[{ key: "←", action: "Back to chats" }]} />
       </div>
 
@@ -51,24 +95,24 @@ export default async function DashboardPage() {
         {/* Summary Cards */}
         <div className="grid grid-cols-4 gap-4 mb-8">
           <div className="rounded-xl border bg-card p-5">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Total Cost (4 weeks)</p>
-            <p className="text-3xl font-bold font-mono text-[#6B2C91] dark:text-white">{formatCost(summary.total_cost_4w)}</p>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Total Cost</p>
+            <p className="text-3xl font-bold font-mono text-[#6B2C91] dark:text-white">{formatCost(summary.total_cost)}</p>
           </div>
           <div className="rounded-xl border bg-card p-5">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Total Tokens (4 weeks)</p>
-            <p className="text-3xl font-bold font-mono">{formatTokens(summary.total_tokens_4w)}</p>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Total Tokens</p>
+            <p className="text-3xl font-bold font-mono">{formatTokens(summary.total_tokens)}</p>
           </div>
           <div className="rounded-xl border bg-card p-5">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">LLM Calls (4 weeks)</p>
-            <p className="text-3xl font-bold font-mono">{summary.total_llm_calls_4w.toLocaleString()}</p>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">LLM Calls</p>
+            <p className="text-3xl font-bold font-mono">{summary.total_llm_calls.toLocaleString()}</p>
           </div>
           <div className="rounded-xl border bg-card p-5">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Chats (4 weeks)</p>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Chats</p>
             <p className="text-3xl font-bold font-mono">{summary.total_chats.toLocaleString()}</p>
           </div>
         </div>
 
-        {/* Charts - client component */}
+        {/* Charts */}
         <DashboardCharts dailyCosts={dailyCosts} userCosts={userCosts} />
       </div>
     </div>

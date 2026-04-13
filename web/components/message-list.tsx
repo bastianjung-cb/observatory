@@ -25,6 +25,27 @@ interface Message {
   run_id: string | null;
 }
 
+function timeAgo(date: Date): string {
+  const diff = Date.now() - date.getTime();
+  const seconds = Math.floor(diff / 1000);
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function formatDelta(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  if (hours > 0) return `+${hours}h${minutes.toString().padStart(2, "0")}m`;
+  if (minutes > 0) return `+${minutes}m${secs.toString().padStart(2, "0")}s`;
+  return `+${secs}s`;
+}
+
 function formatCost(cost: number | string | null): string | null {
   const n = Number(cost);
   if (!n || isNaN(n) || n === 0) return null;
@@ -51,12 +72,15 @@ export function MessageList({
 }) {
   const router = useRouter();
   const [fullText, setFullText] = useState(false);
+  const [reversed, setReversed] = useState(false);
+
+  const displayMessages = reversed ? [...messages].reverse() : messages;
 
   const { selectedIndex } = useKeyboardNav({
-    itemCount: messages.length,
+    itemCount: displayMessages.length,
     storageKey: `messages:${chatId}`,
     onEnter: (index) => {
-      const msg = messages[index];
+      const msg = displayMessages[index];
       if (msg?.has_workflow) {
         router.push(`/chats/${chatId}/messages/${msg.id}`);
       }
@@ -69,12 +93,17 @@ export function MessageList({
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "e" || e.key === "E") {
         e.preventDefault();
         setFullText((prev) => !prev);
       }
+      if (e.key === "r" || e.key === "R") {
+        e.preventDefault();
+        setReversed((prev) => !prev);
+      }
       if (e.key === "w" || e.key === "W") {
-        const msg = messages[selectedIndex];
+        const msg = displayMessages[selectedIndex];
         if (msg?.workflow_id && msg?.run_id && process.env.TEMPORAL_UI_URL) {
           e.preventDefault();
           window.open(
@@ -93,7 +122,7 @@ export function MessageList({
     const container = selectedRef.current?.closest("[class*='overflow-auto']");
     if (selectedIndex === 0) {
       container?.scrollTo(0, 0);
-    } else if (selectedIndex === messages.length - 1) {
+    } else if (selectedIndex === displayMessages.length - 1) {
       container?.scrollTo(0, container.scrollHeight);
     } else {
       selectedRef.current?.scrollIntoView({ block: "nearest" });
@@ -107,7 +136,7 @@ export function MessageList({
           No messages
         </div>
       ) : (
-        messages.map((msg, index) => (
+        displayMessages.map((msg, index) => (
           <div
             key={msg.id}
             ref={index === selectedIndex ? selectedRef : undefined}
@@ -172,9 +201,21 @@ export function MessageList({
                   )}
                 </div>
               )}
-              <span className="text-xs text-muted-foreground ml-auto" suppressHydrationWarning>
-                {new Date(msg.created_at).toLocaleTimeString()}
-              </span>
+              <div className="ml-auto text-right shrink-0" suppressHydrationWarning>
+                <div className="text-sm flex items-center gap-2 justify-end">
+                  {(() => {
+                    const origIndex = messages.indexOf(msg);
+                    if (origIndex > 0) {
+                      const prev = messages[origIndex - 1];
+                      const delta = Math.floor((new Date(msg.created_at).getTime() - new Date(prev.created_at).getTime()) / 1000);
+                      if (delta >= 1) return <span className="font-mono text-muted-foreground">{formatDelta(delta)}</span>;
+                    }
+                    return null;
+                  })()}
+                  <span>{timeAgo(new Date(msg.created_at))}</span>
+                </div>
+                <div className="text-xs text-muted-foreground">{new Date(msg.created_at).toLocaleString()}</div>
+              </div>
             </div>
             <div className="pl-0">
               {msg.content_preview ? (

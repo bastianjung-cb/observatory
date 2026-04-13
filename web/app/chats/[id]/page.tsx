@@ -39,6 +39,7 @@ export default async function ChatPage({
           { key: "→", action: "View workflow" },
           { key: "←", action: "Back to chats" },
           { key: "E", action: "Toggle full text" },
+          { key: "R", action: "Reverse order" },
           { key: "W", action: "Open Temporal UI" },
         ]} />
       </div>
