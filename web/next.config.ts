@@ -10,6 +10,7 @@ const nextConfig: NextConfig = {
     TEMPORAL_UI_URL: process.env.TEMPORAL_UI_URL || "",
     TEMPORAL_NAMESPACE: process.env.TEMPORAL_NAMESPACE || "default",
     APP_URL: process.env.APP_URL || "",
+    INSTANCE_NAME: process.env.INSTANCE_NAME || "",
   },
 };
 
