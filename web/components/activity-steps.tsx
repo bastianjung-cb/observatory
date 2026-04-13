@@ -515,7 +515,20 @@ export function ActivitySteps({
   const [reversed, setReversed] = useState(true);
   const [filterOpen, setFilterOpen] = useState(false);
   const [overlaySearch, setOverlaySearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [activeMatch, setActiveMatch] = useState(0);
+  const [searchInput, setSearchInput] = useState(true);
+  const [searchOutput, setSearchOutput] = useState(true);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout>>(null);
+
+  function updateSearch(value: string) {
+    setOverlaySearch(value);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      setDebouncedSearch(value);
+      setActiveMatch(0);
+    }, 150);
+  }
 
   const allTypes = Array.from(
     new Set(activities.map((a) => a.activity_type))
@@ -561,14 +574,20 @@ export function ActivitySteps({
       setOverlayMode(mode);
     }
     setOverlaySearch("");
+    setDebouncedSearch("");
     setActiveMatch(0);
+    setSearchInput(true);
+    setSearchOutput(true);
   };
 
   const closeOverlay = () => {
     setExpandedId(null);
     setOverlayMode(null);
     setOverlaySearch("");
+    setDebouncedSearch("");
     setActiveMatch(0);
+    setSearchInput(true);
+    setSearchOutput(true);
   };
 
   const { selectedIndex } = useKeyboardNav({
@@ -841,9 +860,9 @@ export function ActivitySteps({
 
         const inputJson = activity.input ? JSON.stringify(activity.input, null, 2) : "null";
         const outputJson = activity.output ? JSON.stringify(activity.output, null, 2) : "null";
-        const term = overlaySearch.trim();
-        const inputMatches = term ? countMatches(inputJson, term) : 0;
-        const outputMatches = term ? countMatches(outputJson, term) : 0;
+        const term = debouncedSearch.trim();
+        const inputMatches = term && searchInput ? countMatches(inputJson, term) : 0;
+        const outputMatches = term && searchOutput ? countMatches(outputJson, term) : 0;
         const totalMatches = inputMatches + outputMatches;
 
         return (
@@ -867,31 +886,54 @@ export function ActivitySteps({
                   {formatDuration(activity.duration_ms)}
                 </span>
               </div>
-              <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
-                <Input
-                  placeholder="Search JSON..."
-                  value={overlaySearch}
-                  onChange={(e) => {
-                    setOverlaySearch(e.target.value);
-                    setActiveMatch(0);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && totalMatches > 0) {
-                      e.preventDefault();
-                      if (e.shiftKey) {
-                        setActiveMatch((prev) => (prev - 1 + totalMatches) % totalMatches);
-                      } else {
-                        setActiveMatch((prev) => (prev + 1) % totalMatches);
+              <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                <div className="relative">
+                  <Input
+                    placeholder="Search JSON..."
+                    value={overlaySearch}
+                    onChange={(e) => updateSearch(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && totalMatches > 0) {
+                        e.preventDefault();
+                        if (e.shiftKey) {
+                          setActiveMatch((prev) => (prev - 1 + totalMatches) % totalMatches);
+                        } else {
+                          setActiveMatch((prev) => (prev + 1) % totalMatches);
+                        }
                       }
-                    }
-                    if (e.key === "Escape") {
-                      e.stopPropagation();
-                      closeOverlay();
-                    }
-                  }}
-                  className="h-8 w-64 text-xs"
-                  id="json-overlay-search"
-                />
+                      if (e.key === "Escape") {
+                        e.stopPropagation();
+                        closeOverlay();
+                      }
+                    }}
+                    className="h-8 w-64 text-xs pr-7"
+                    id="json-overlay-search"
+                  />
+                  {overlaySearch && (
+                    <button
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      onClick={() => { setOverlaySearch(""); setDebouncedSearch(""); setActiveMatch(0); }}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${searchInput ? "bg-[#364F6B] text-white dark:bg-[#6b99b8]" : "bg-muted text-muted-foreground"}`}
+                    onClick={() => { setSearchInput((v) => !v); setActiveMatch(0); document.getElementById("json-overlay-search")?.focus(); }}
+                  >
+                    Input
+                  </button>
+                  <button
+                    className={`px-2 py-0.5 text-[10px] font-medium rounded transition-colors ${searchOutput ? "bg-[#364F6B] text-white dark:bg-[#6b99b8]" : "bg-muted text-muted-foreground"}`}
+                    onClick={() => { setSearchOutput((v) => !v); setActiveMatch(0); document.getElementById("json-overlay-search")?.focus(); }}
+                  >
+                    Output
+                  </button>
+                </div>
                 {term && (
                   <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
                     {totalMatches > 0 ? `${activeMatch + 1}/${totalMatches}` : "0 results"}
@@ -911,7 +953,7 @@ export function ActivitySteps({
                   <CopyButton text={activity.input ? JSON.stringify(activity.input, null, 2) : "null"} />
                 </div>
                 <div className="flex-1 overflow-auto p-4 bg-background">
-                  <HighlightedJson data={activity.input} search={overlaySearch} activeMatchIndex={activeMatch} matchOffset={0} />
+                  <HighlightedJson data={activity.input} search={searchInput ? debouncedSearch : ""} activeMatchIndex={activeMatch} matchOffset={0} />
                 </div>
               </div>
               <div className="flex flex-col overflow-hidden">
@@ -922,7 +964,7 @@ export function ActivitySteps({
                   <CopyButton text={activity.output ? JSON.stringify(activity.output, null, 2) : "null"} />
                 </div>
                 <div className="flex-1 overflow-auto p-4 bg-background">
-                  <HighlightedJson data={activity.output} search={overlaySearch} activeMatchIndex={activeMatch} matchOffset={inputMatches} />
+                  <HighlightedJson data={activity.output} search={searchOutput ? debouncedSearch : ""} activeMatchIndex={activeMatch} matchOffset={inputMatches} />
                 </div>
               </div>
             </div>
