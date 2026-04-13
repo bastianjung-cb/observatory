@@ -1,12 +1,15 @@
 "use server";
 
 import { exec } from "child_process";
+import { resolve as resolvePath } from "path";
 import { revalidatePath } from "next/cache";
+
+const PROJECT_ROOT = resolvePath(__dirname, "..", "..", "..");
 
 export async function runSync(): Promise<{ success: boolean; message: string }> {
   return new Promise((resolve) => {
     exec(
-      "cd /mnt/observer_app && uv run python main.py --skip-migrations",
+      `cd "${PROJECT_ROOT}" && uv run python main.py --skip-migrations`,
       { timeout: 120000 },
       (error, stdout, stderr) => {
         if (error) {

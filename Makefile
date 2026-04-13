@@ -1,3 +1,7 @@
+ROOT := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
+DEPLOY_PORT ?= 9100
+LOG_FILE ?= /tmp/observatory-$(DEPLOY_PORT).log
+
 .PHONY: up down migrate reset sync dev dev-stop build start start-stop db-shell status test typecheck
 
 # Start observer infrastructure
@@ -11,15 +15,15 @@ down:
 
 # Run database migrations (safe, non-destructive)
 migrate:
-	cd /mnt/observer_app && uv run alembic upgrade head
+	cd $(ROOT) && uv run alembic upgrade head
 
 # Create a new migration
 migration:
-	@read -p "Migration name: " name && cd /mnt/observer_app && uv run alembic revision -m "$$name"
+	@read -p "Migration name: " name && cd $(ROOT) && uv run alembic revision -m "$$name"
 
 # Sync all data (app + temporal → observer DB)
 sync:
-	cd /mnt/observer_app && uv run python main.py
+	cd $(ROOT) && uv run python main.py
 
 # Reset observer DB — DESTROYS ALL DATA including irreplaceable workflow history
 reset:
@@ -51,7 +55,7 @@ reset-app-data:
 
 # Start the web app in dev mode (port 3001)
 dev:
-	cd /mnt/observer_app/web && npm run dev
+	cd $(ROOT)/web && npm run dev
 
 # Stop the dev server
 dev-stop:
@@ -60,42 +64,42 @@ dev-stop:
 
 # Build the web app for production
 build:
-	cd /mnt/observer_app/web && npm run build
+	cd $(ROOT)/web && npm run build
 
 # Start the production web app (port 3001)
 start:
-	cd /mnt/observer_app/web && PORT=3001 npm run start
+	cd $(ROOT)/web && PORT=3001 npm run start
 
 # Stop the production server
 start-stop:
 	@fuser -k 3001/tcp 2>/dev/null || true
 	@echo "Production server stopped"
 
-# Deploy: build + run production on port 9100 (accessible via Tailscale)
+# Deploy: build + run production (default port 9100, override with DEPLOY_PORT=9101)
 deploy:
-	@echo "Stopping existing instance..."
-	@fuser -k 9100/tcp 2>/dev/null || true
+	@echo "Stopping existing instance on port $(DEPLOY_PORT)..."
+	@fuser -k $(DEPLOY_PORT)/tcp 2>/dev/null || true
 	@echo "Running migrations..."
-	cd /mnt/observer_app && uv run alembic upgrade head
+	cd $(ROOT) && uv run alembic upgrade head
 	@echo "Building web app..."
-	cd /mnt/observer_app/web && npm run build
-	@echo "Starting on port 9100..."
-	cd /mnt/observer_app/web && PORT=9100 nohup npm run start > /tmp/observatory.log 2>&1 &
+	cd $(ROOT)/web && npm run build
+	@echo "Starting on port $(DEPLOY_PORT)..."
+	cd $(ROOT)/web && PORT=$(DEPLOY_PORT) nohup npm run start > $(LOG_FILE) 2>&1 &
 	@sleep 3
 	@echo ""
 	@echo "  ✓ Observatory deployed"
-	@echo "  → http://100.113.17.93:9100 (Tailscale)"
-	@echo "  → Logs: tail -f /tmp/observatory.log"
+	@echo "  → http://100.113.17.93:$(DEPLOY_PORT) (Tailscale)"
+	@echo "  → Logs: tail -f $(LOG_FILE)"
 	@echo ""
 
 # Stop the deployed instance
 deploy-stop:
-	@fuser -k 9100/tcp 2>/dev/null || true
+	@fuser -k $(DEPLOY_PORT)/tcp 2>/dev/null || true
 	@echo "Deployed instance stopped"
 
 # View deploy logs
 deploy-logs:
-	tail -f /tmp/observatory.log
+	tail -f $(LOG_FILE)
 
 # Open a psql shell to the observer DB
 db-shell:
@@ -107,8 +111,8 @@ status:
 
 # Run Python tests
 test:
-	cd /mnt/observer_app && uv run pytest -v
+	cd $(ROOT) && uv run pytest -v
 
 # TypeScript check
 typecheck:
-	cd /mnt/observer_app/web && npx tsc --noEmit
+	cd $(ROOT)/web && npx tsc --noEmit
