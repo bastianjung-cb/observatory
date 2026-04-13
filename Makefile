@@ -35,17 +35,16 @@ reset:
 	@echo ""
 	@read -p "  Type 'yes-destroy-data' to confirm: " confirm && \
 	if [ "$$confirm" = "yes-destroy-data" ]; then \
-		docker compose down -v && \
-		docker compose up -d && \
-		sleep 3 && \
-		echo "DB destroyed and recreated. Run 'make migrate && make sync' to repopulate."; \
+		cd $(ROOT) && uv run alembic downgrade base && \
+		uv run alembic upgrade head && \
+		echo "DB reset complete. Run 'make sync' to repopulate."; \
 	else \
 		echo "Aborted."; \
 	fi
 
 # Reset only rebuildable data (users, chats, messages) — keeps workflows + activities
 reset-app-data:
-	docker compose exec postgres psql -U observer -d observer -c " \
+	psql "$(OBSERVER_DATABASE_URL)" -c " \
 		DELETE FROM message_parts; \
 		DELETE FROM messages; \
 		DELETE FROM chats; \
@@ -104,7 +103,7 @@ deploy-logs:
 
 # Open a psql shell to the observer DB
 db-shell:
-	docker compose exec postgres psql -U observer -d observer
+	psql "$(OBSERVER_DATABASE_URL)"
 
 # Show running containers and ports
 status:
