@@ -71,6 +71,32 @@ start-stop:
 	@fuser -k 3001/tcp 2>/dev/null || true
 	@echo "Production server stopped"
 
+# Deploy: build + run production on port 9100 (accessible via Tailscale)
+deploy:
+	@echo "Stopping existing instance..."
+	@fuser -k 9100/tcp 2>/dev/null || true
+	@echo "Running migrations..."
+	cd /mnt/observer_app && uv run alembic upgrade head
+	@echo "Building web app..."
+	cd /mnt/observer_app/web && npm run build
+	@echo "Starting on port 9100..."
+	cd /mnt/observer_app/web && PORT=9100 nohup npm run start > /tmp/observatory.log 2>&1 &
+	@sleep 3
+	@echo ""
+	@echo "  ✓ Observatory deployed"
+	@echo "  → http://100.113.17.93:9100 (Tailscale)"
+	@echo "  → Logs: tail -f /tmp/observatory.log"
+	@echo ""
+
+# Stop the deployed instance
+deploy-stop:
+	@fuser -k 9100/tcp 2>/dev/null || true
+	@echo "Deployed instance stopped"
+
+# View deploy logs
+deploy-logs:
+	tail -f /tmp/observatory.log
+
 # Open a psql shell to the observer DB
 db-shell:
 	docker compose exec postgres psql -U observer -d observer

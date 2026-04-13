@@ -89,8 +89,11 @@ make migrate
 # 4. Sync data from app DB + Temporal
 make sync
 
-# 5. Start the web app
+# 5. Start the web app (dev)
 make dev                    # http://localhost:3001
+
+# Or deploy production build (port 9100, accessible via Tailscale)
+make deploy                 # http://<tailscale-ip>:9100
 ```
 
 ## Database & Migrations
@@ -189,6 +192,9 @@ observatory/
 | `make build` | Production build |
 | `make start` | Run production build (:3001) |
 | `make start-stop` | Stop production server |
+| `make deploy` | Build + deploy on :9100 (Tailscale) |
+| `make deploy-stop` | Stop deployed instance |
+| `make deploy-logs` | Tail deploy logs |
 | `make db-shell` | psql into observer DB |
 | `make status` | Show running containers |
 | `make test` | Run Python tests |
