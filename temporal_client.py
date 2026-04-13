@@ -45,16 +45,18 @@ def _decode_payloads(payloads) -> Any | None:
         for p in payloads:
             try:
                 decoded.append(json.loads(p.data))
-            except (json.JSONDecodeError, AttributeError):
+            except (json.JSONDecodeError, AttributeError) as exc:
+                logger.debug("JSON decode failed for payload, falling back to string: %s", exc)
                 try:
                     decoded.append(p.data.decode("utf-8"))
-                except Exception:
+                except Exception as inner_exc:
+                    logger.debug("UTF-8 decode failed for payload, using str(): %s", inner_exc)
                     decoded.append(str(p.data))
         if len(decoded) == 1:
             return decoded[0]
         return decoded
-    except (IndexError, AttributeError):
-        pass
+    except (IndexError, AttributeError) as exc:
+        logger.debug("Failed to decode payloads: %s", exc)
     return None
 
 

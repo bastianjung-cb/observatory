@@ -7,14 +7,8 @@ export function ThemeToggle() {
   const [dark, setDark] = useState(true);
 
   useEffect(() => {
-    const stored = localStorage.getItem("theme");
-    if (stored === "light") {
-      setDark(false);
-      document.documentElement.classList.remove("dark");
-    } else {
-      setDark(true);
-      document.documentElement.classList.add("dark");
-    }
+    // Sync React state with what the inline script already set
+    setDark(document.documentElement.classList.contains("dark"));
   }, []);
 
   function toggle() {

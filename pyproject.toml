@@ -8,6 +8,7 @@ dependencies = [
     "temporalio>=1.9.0",
     "psycopg[binary]>=3.2.0",
     "python-dotenv>=1.0.0",
+    "alembic>=1.13.0",
 ]
 
 [project.optional-dependencies]

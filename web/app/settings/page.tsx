@@ -1,4 +1,5 @@
 import { getAllModelPricing, type ModelPricing } from "@/lib/queries/activities";
+import { getSyncStatus, getEntityCounts } from "@/lib/queries/settings";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -19,15 +20,82 @@ export default async function SettingsPage() {
     models = [];
   }
 
+  let syncStatus, entityCounts;
+  try {
+    [syncStatus, entityCounts] = await Promise.all([
+      getSyncStatus(),
+      getEntityCounts(),
+    ]);
+  } catch {
+    syncStatus = null;
+    entityCounts = null;
+  }
+
+  function timeAgo(dateStr: string): string {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+  }
+
   return (
     <div className="max-w-4xl">
       <EscapeToHome />
       <div className="mb-6">
         <h2 className="text-2xl font-bold">Settings</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Manage model pricing for cost calculations. Prices are per 1M tokens.
+          Database status, sync history, and model pricing.
         </p>
       </div>
+
+      {/* Database Status */}
+      {entityCounts && (
+        <div className="rounded-lg border p-6 mb-8">
+          <h3 className="text-lg font-semibold mb-4">Database Status</h3>
+          <div className="grid grid-cols-3 gap-4 mb-6">
+            {[
+              { label: "Users", count: entityCounts.users },
+              { label: "Chats", count: entityCounts.chats },
+              { label: "Messages", count: entityCounts.messages },
+              { label: "Message Parts", count: entityCounts.message_parts },
+              { label: "Workflows", count: entityCounts.workflows },
+              { label: "Activities", count: entityCounts.activities },
+            ].map((item) => (
+              <div key={item.label} className="rounded-lg border bg-muted/30 p-3">
+                <p className="text-xs text-muted-foreground uppercase tracking-wider">{item.label}</p>
+                <p className="text-2xl font-bold font-mono mt-1">{item.count.toLocaleString()}</p>
+              </div>
+            ))}
+          </div>
+
+          {syncStatus && syncStatus.length > 0 && (
+            <div>
+              <h4 className="text-sm font-semibold mb-2">Last Sync</h4>
+              <div className="grid grid-cols-2 gap-2">
+                {syncStatus.map((s) => (
+                  <div key={s.entity} className="flex items-center justify-between rounded border px-3 py-2 text-sm">
+                    <span className="font-medium capitalize">{s.entity.replace("_", " ")}</span>
+                    <span className="text-muted-foreground" suppressHydrationWarning>
+                      {timeAgo(s.last_sync_at)}
+                      <span className="text-xs ml-1.5" suppressHydrationWarning>
+                        ({new Date(s.last_sync_at).toLocaleString()})
+                      </span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Model Pricing */}
+      <h3 className="text-lg font-semibold mb-4">Model Pricing</h3>
+      <p className="text-sm text-muted-foreground mb-4">Prices are per 1M tokens.</p>
 
       <div className="rounded-lg border overflow-hidden mb-8">
         <Table>

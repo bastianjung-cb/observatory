@@ -125,8 +125,11 @@ export async function getWorkflowBreadcrumbs(
   // Walk up the parent chain
   const crumbs: BreadcrumbItem[] = [];
   let currentId: string | null = workflowId;
+  let depth = 0;
+  const MAX_DEPTH = 20;
 
-  while (currentId) {
+  while (currentId && depth < MAX_DEPTH) {
+    depth++;
     const qr = await pool.query(
       `SELECT workflow_id, workflow_name, parent_workflow_id
        FROM workflows

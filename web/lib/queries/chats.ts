@@ -10,10 +10,24 @@ export interface ChatRow {
   total_cost_usd: number | null;
 }
 
+export type SortKey = "user" | "title" | "messages" | "cost" | "cost_per_msg" | "last_message";
+export type SortDir = "asc" | "desc";
+
+const SORT_COLUMNS: Record<SortKey, string> = {
+  user: "user_name",
+  title: "c.title",
+  messages: "message_count",
+  cost: "total_cost_usd",
+  cost_per_msg: "cost_per_msg",
+  last_message: "last_message_at",
+};
+
 export async function getChats(
   search?: string,
   page = 1,
-  pageSize = 50
+  pageSize = 20,
+  sortKey: SortKey = "last_message",
+  sortDir: SortDir = "desc"
 ): Promise<{ chats: ChatRow[]; total: number }> {
   const offset = (page - 1) * pageSize;
 
@@ -48,6 +62,11 @@ export async function getChats(
   const countResult = await pool.query(countQuery, params);
   const total = parseInt(countResult.rows[0].total, 10);
 
+  // Validate sort to prevent injection
+  const orderCol = SORT_COLUMNS[sortKey] || "last_message_at";
+  const orderDir = sortDir === "asc" ? "ASC" : "DESC";
+  const nullsHandling = sortDir === "desc" ? "NULLS LAST" : "NULLS FIRST";
+
   const dataQuery = `
     SELECT
       c.id,
@@ -72,13 +91,32 @@ export async function getChats(
         JOIN activities act ON act.workflow_id = w.workflow_id AND act.activity_type = 'invokeModel'
         LEFT JOIN model_pricing mp ON mp.model_id = act.input->>'modelId'
         WHERE m2.chat_id = c.id
-      ) as total_cost_usd
+      ) as total_cost_usd,
+      CASE WHEN COUNT(m.id) > 0 THEN
+        (
+          SELECT COALESCE(SUM(
+            CASE WHEN mp.id IS NOT NULL THEN
+              (
+                COALESCE((act.output->'usage'->'inputTokens'->>'noCache')::numeric, 0) * mp.input_price
+                + COALESCE((act.output->'usage'->'inputTokens'->>'cacheRead')::numeric, 0) * COALESCE(mp.cache_read_price, mp.input_price)
+                + COALESCE((act.output->'usage'->'outputTokens'->>'text')::numeric, 0) * mp.output_price
+                + COALESCE((act.output->'usage'->'outputTokens'->>'reasoning')::numeric, 0) * COALESCE(mp.reasoning_price, mp.output_price)
+              ) / 1000000.0
+            ELSE 0 END
+          ), 0)
+          FROM messages m2
+          JOIN workflows w ON w.message_id = m2.id
+          JOIN activities act ON act.workflow_id = w.workflow_id AND act.activity_type = 'invokeModel'
+          LEFT JOIN model_pricing mp ON mp.model_id = act.input->>'modelId'
+          WHERE m2.chat_id = c.id
+        ) / COUNT(m.id)
+      ELSE 0 END as cost_per_msg
     FROM chats c
     JOIN users u ON u.id = c.user_id
     LEFT JOIN messages m ON m.chat_id = c.id
     ${whereClause}
     GROUP BY c.id, c.title, u.given_name, u.family_name, u.email
-    ORDER BY MAX(m.created_at) DESC NULLS LAST
+    ORDER BY ${orderCol} ${orderDir} ${nullsHandling}
     LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
   `;
 

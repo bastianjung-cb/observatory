@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useKeyboardHints } from "@/components/keyboard-context";
 
 interface Shortcut {
@@ -11,9 +11,14 @@ interface Shortcut {
 // Drop this into a page to register shortcuts for the sticky footer
 export function KeyboardHints({ shortcuts }: { shortcuts: Shortcut[] }) {
   const { setShortcuts } = useKeyboardHints();
+  const prevRef = useRef<string>("");
 
   useEffect(() => {
-    setShortcuts(shortcuts);
+    const serialized = JSON.stringify(shortcuts);
+    if (serialized !== prevRef.current) {
+      prevRef.current = serialized;
+      setShortcuts(shortcuts);
+    }
     return () => setShortcuts([]);
   }, [shortcuts, setShortcuts]);
 

@@ -5,7 +5,7 @@ import { SyncButton } from "@/components/sync-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { KeyboardProvider } from "@/components/keyboard-context";
 import { KeyboardFooter } from "@/components/keyboard-hints";
-import { Settings } from "lucide-react";
+import { Settings, DollarSign } from "lucide-react";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -20,7 +20,19 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: `
+          (function() {
+            var theme = localStorage.getItem('theme');
+            if (theme === 'light') {
+              document.documentElement.classList.remove('dark');
+            } else {
+              document.documentElement.classList.add('dark');
+            }
+          })();
+        `}} />
+      </head>
       <body className={`${inter.variable} font-sans bg-background text-foreground antialiased`}>
         <KeyboardProvider>
           <div className="h-screen flex flex-col overflow-hidden">
@@ -33,6 +45,9 @@ export default function RootLayout({
               <div className="flex items-center gap-3">
                 <SyncButton />
                 <ThemeToggle />
+                <a href="/dashboard" className="text-muted-foreground hover:text-foreground transition-colors" title="Usage Dashboard">
+                  <DollarSign className="h-4 w-4" />
+                </a>
                 <a href="/settings" className="text-muted-foreground hover:text-foreground transition-colors" title="Settings">
                   <Settings className="h-4 w-4" />
                 </a>

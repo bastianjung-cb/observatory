@@ -12,7 +12,7 @@ import psycopg
 load_dotenv(Path(__file__).parent / ".env")
 
 from app_sync import sync_app_data
-from db import TERMINAL_STATUSES, init_schema, is_workflow_terminal, upsert_activities, upsert_workflow
+from db import TERMINAL_STATUSES, run_migrations, init_schema, is_workflow_terminal, upsert_activities, upsert_workflow
 from temporal_client import (
     _decode_payloads,
     fetch_workflow_history,
@@ -39,8 +39,10 @@ APP_DATABASE_URL = os.environ.get(
 )
 
 
-def _extract_message_id(workflow_id: str) -> str:
+def _extract_message_id(workflow_id: str) -> str | None:
     """Extract message UUID from workflow_id like 'chat-9e138348-...'."""
+    if not workflow_id.startswith("chat-"):
+        return None
     return workflow_id.removeprefix("chat-")
 
 
@@ -189,6 +191,10 @@ async def run_sync() -> None:
 
 
 def main() -> None:
+    import sys
+    if "--skip-migrations" not in sys.argv:
+        logger.info("Running migrations...")
+        run_migrations(OBSERVER_DATABASE_URL)
     asyncio.run(run_sync())
 
 

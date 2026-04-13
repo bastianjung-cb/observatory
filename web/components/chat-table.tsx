@@ -32,12 +32,12 @@ interface Chat {
 
 function formatCost(cost: number | string | null): string {
   const n = Number(cost);
-  if (!n || isNaN(n)) return "—";
+  if (!n || isNaN(n) || n === 0) return "—";
   if (n < 0.01) return `$${n.toFixed(4)}`;
   return `$${n.toFixed(2)}`;
 }
 
-type SortKey = "user" | "title" | "messages" | "cost" | "last_message";
+type SortKey = "user" | "title" | "messages" | "cost" | "cost_per_msg" | "last_message";
 type SortDir = "asc" | "desc";
 
 function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
@@ -48,7 +48,7 @@ function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
   );
 }
 
-const COL_GRID = "grid grid-cols-[200px_1fr_80px_80px_160px] gap-2 items-center";
+const COL_GRID = "grid grid-cols-[200px_1fr_80px_80px_80px_160px] gap-2 items-center";
 
 export function ChatTable({
   chats,
@@ -56,34 +56,40 @@ export function ChatTable({
   total,
   page,
   pageSize,
+  sortKey: currentSortKey,
+  sortDir: currentSortDir,
 }: {
   chats: Chat[];
   search: string;
   total: number;
   page: number;
   pageSize: number;
+  sortKey: SortKey;
+  sortDir: SortDir;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [sortKey, setSortKey] = useState<SortKey>("last_message");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [userFilter, setUserFilter] = useState("");
   const [titleFilter, setTitleFilter] = useState("");
   const [msgFilter, setMsgFilter] = useState("");
 
   function toggleSort(key: SortKey) {
-    if (sortKey === key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    const params = new URLSearchParams(searchParams.toString());
+    if (currentSortKey === key) {
+      params.set("dir", currentSortDir === "asc" ? "desc" : "asc");
     } else {
-      setSortKey(key);
-      setSortDir(key === "messages" || key === "cost" ? "desc" : "asc");
+      params.set("sort", key);
+      params.set("dir", key === "messages" || key === "cost" || key === "cost_per_msg" ? "desc" : "asc");
     }
+    params.delete("page");
+    router.push(`/?${params.toString()}`);
   }
 
+  // Client-side column filters (within the server-sorted page)
   const filteredAndSorted = useMemo(() => {
     let result = chats;
-
     if (userFilter) {
       const f = userFilter.toLowerCase();
       result = result.filter(
@@ -104,34 +110,8 @@ export function ChatTable({
         result = result.filter((c) => c.message_count >= n);
       }
     }
-
-    const sorted = [...result].sort((a, b) => {
-      let cmp = 0;
-      switch (sortKey) {
-        case "user":
-          cmp = a.user_name.localeCompare(b.user_name);
-          break;
-        case "title":
-          cmp = (a.title || "").localeCompare(b.title || "");
-          break;
-        case "messages":
-          cmp = a.message_count - b.message_count;
-          break;
-        case "cost":
-          cmp = (Number(a.total_cost_usd) || 0) - (Number(b.total_cost_usd) || 0);
-          break;
-        case "last_message": {
-          const aTime = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
-          const bTime = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
-          cmp = aTime - bTime;
-          break;
-        }
-      }
-      return sortDir === "asc" ? cmp : -cmp;
-    });
-
-    return sorted;
-  }, [chats, userFilter, titleFilter, msgFilter, sortKey, sortDir]);
+    return result;
+  }, [chats, userFilter, titleFilter, msgFilter]);
 
   const { selectedIndex } = useKeyboardNav({
     itemCount: filteredAndSorted.length,
@@ -179,8 +159,9 @@ export function ChatTable({
             placeholder="Search by user or message content..."
             defaultValue={search}
             onChange={(e) => {
-              const timeout = setTimeout(() => handleSearch(e.target.value), 300);
-              return () => clearTimeout(timeout);
+              if (debounceRef.current) clearTimeout(debounceRef.current);
+              const value = e.target.value;
+              debounceRef.current = setTimeout(() => handleSearch(value), 300);
             }}
             className="max-w-sm"
           />
@@ -194,19 +175,22 @@ export function ChatTable({
         {/* Column headers */}
         <div className={`${COL_GRID} px-3 py-2 border-t bg-muted/50`}>
           <button className="flex items-center gap-1 font-semibold text-xs uppercase tracking-wider hover:text-foreground transition-colors" onClick={() => toggleSort("user")}>
-            User <SortIcon active={sortKey === "user"} dir={sortDir} />
+            User <SortIcon active={currentSortKey === "user"} dir={currentSortDir} />
           </button>
           <button className="flex items-center gap-1 font-semibold text-xs uppercase tracking-wider hover:text-foreground transition-colors" onClick={() => toggleSort("title")}>
-            Chat <SortIcon active={sortKey === "title"} dir={sortDir} />
+            Chat <SortIcon active={currentSortKey === "title"} dir={currentSortDir} />
           </button>
           <button className="flex items-center gap-1 font-semibold text-xs uppercase tracking-wider hover:text-foreground transition-colors justify-end" onClick={() => toggleSort("messages")}>
-            Msgs <SortIcon active={sortKey === "messages"} dir={sortDir} />
+            Msgs <SortIcon active={currentSortKey === "messages"} dir={currentSortDir} />
           </button>
           <button className="flex items-center gap-1 font-semibold text-xs uppercase tracking-wider hover:text-foreground transition-colors justify-end" onClick={() => toggleSort("cost")}>
-            Cost <SortIcon active={sortKey === "cost"} dir={sortDir} />
+            Cost <SortIcon active={currentSortKey === "cost"} dir={currentSortDir} />
+          </button>
+          <button className="flex items-center gap-1 font-semibold text-xs uppercase tracking-wider hover:text-foreground transition-colors justify-end" onClick={() => toggleSort("cost_per_msg")}>
+            $/msg <SortIcon active={currentSortKey === "cost_per_msg"} dir={currentSortDir} />
           </button>
           <button className="flex items-center gap-1 font-semibold text-xs uppercase tracking-wider hover:text-foreground transition-colors" onClick={() => toggleSort("last_message")}>
-            Last Message <SortIcon active={sortKey === "last_message"} dir={sortDir} />
+            Last Message <SortIcon active={currentSortKey === "last_message"} dir={currentSortDir} />
           </button>
         </div>
 
@@ -215,6 +199,7 @@ export function ChatTable({
           <Input placeholder="Filter user..." value={userFilter} onChange={(e) => setUserFilter(e.target.value)} className="h-7 text-xs" />
           <Input placeholder="Filter title..." value={titleFilter} onChange={(e) => setTitleFilter(e.target.value)} className="h-7 text-xs" />
           <Input placeholder="Min" value={msgFilter} onChange={(e) => setMsgFilter(e.target.value)} className="h-7 text-xs text-right" />
+          <div />
           <div />
           <div />
         </div>
@@ -250,6 +235,9 @@ export function ChatTable({
                 <div className="font-bold truncate">{chat.title || "Untitled"}</div>
                 <div className="text-right tabular-nums">{chat.message_count}</div>
                 <div className="text-right tabular-nums text-sm">{formatCost(chat.total_cost_usd)}</div>
+                <div className="text-right tabular-nums text-sm">
+                  {chat.message_count > 0 ? formatCost(Number(chat.total_cost_usd || 0) / chat.message_count) : "—"}
+                </div>
                 <div suppressHydrationWarning>
                   {chat.last_message_at ? (() => {
                     const d = new Date(chat.last_message_at!);

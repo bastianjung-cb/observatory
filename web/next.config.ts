@@ -7,7 +7,6 @@ config({ path: resolve(__dirname, "..", ".env") });
 
 const nextConfig: NextConfig = {
   env: {
-    OBSERVER_DATABASE_URL: process.env.OBSERVER_DATABASE_URL!,
     TEMPORAL_UI_URL: process.env.TEMPORAL_UI_URL || "",
     TEMPORAL_NAMESPACE: process.env.TEMPORAL_NAMESPACE || "default",
   },

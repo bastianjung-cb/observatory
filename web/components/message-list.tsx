@@ -27,7 +27,7 @@ interface Message {
 
 function formatCost(cost: number | string | null): string | null {
   const n = Number(cost);
-  if (!n || isNaN(n)) return null;
+  if (!n || isNaN(n) || n === 0) return null;
   if (n < 0.01) return `$${n.toFixed(4)}`;
   return `$${n.toFixed(2)}`;
 }

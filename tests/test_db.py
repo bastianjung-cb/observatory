@@ -68,6 +68,8 @@ def _sample_workflow(workflow_id="chat-9e138348-0b53-407e-900e-ccacb83ecf6f"):
         "end_time": datetime(2026, 1, 1, 0, 5, tzinfo=timezone.utc),
         "input": {"prompt": "hello"},
         "output": {"response": "world"},
+        "parent_workflow_id": None,
+        "workflow_name": None,
     }
 
 
@@ -130,6 +132,7 @@ def _sample_activity(activity_id="1"):
         "completed_time": datetime(2026, 1, 1, 0, 0, 3, tzinfo=timezone.utc),
         "input": {"model": "gpt-4", "prompt": "hello"},
         "output": {"response": "hi"},
+        "attempt": 1,
     }
 
 

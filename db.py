@@ -121,11 +121,34 @@ ALTER TABLE activities ADD COLUMN IF NOT EXISTS attempt INTEGER NOT NULL DEFAULT
 """
 
 
+def run_migrations(database_url: str) -> None:
+    """Run alembic migrations to ensure schema is up to date."""
+    from pathlib import Path
+
+    from alembic import command
+    from alembic.config import Config
+
+    alembic_cfg = Config(str(Path(__file__).parent / "alembic.ini"))
+    alembic_cfg.set_main_option("script_location", str(Path(__file__).parent / "migrations"))
+    dsn = database_url
+    if dsn.startswith("postgresql://"):
+        dsn = dsn.replace("postgresql://", "postgresql+psycopg://", 1)
+    alembic_cfg.set_main_option("sqlalchemy.url", dsn)
+    command.upgrade(alembic_cfg, "head")
+
+
 def init_schema(conn: psycopg.Connection) -> None:
+    """Create schema directly via SQL (for tests and bootstrapping without alembic)."""
     with conn.cursor() as cur:
         cur.execute(SCHEMA_SQL)
-        cur.execute(MIGRATIONS_SQL)
         cur.execute(INDEXES_SQL)
+        cur.execute(SEED_PRICING_SQL)
+    conn.commit()
+
+
+def seed_data(conn: psycopg.Connection) -> None:
+    """Insert seed data (idempotent)."""
+    with conn.cursor() as cur:
         cur.execute(SEED_PRICING_SQL)
     conn.commit()
 
