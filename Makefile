@@ -1,5 +1,6 @@
 ROOT := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
-DEPLOY_PORT ?= 9100
+include $(ROOT)/.env
+export
 LOG_FILE ?= /tmp/observatory-$(DEPLOY_PORT).log
 
 .PHONY: up down migrate reset sync dev dev-stop build start start-stop db-shell status test typecheck
