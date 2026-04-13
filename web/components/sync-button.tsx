@@ -14,6 +14,17 @@ export function SyncButton() {
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, []);
 
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+        e.preventDefault();
+        if (!syncing) handleSync();
+      }
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  });
+
   async function handleSync() {
     setSyncing(true);
     setResult(null);

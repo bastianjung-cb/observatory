@@ -48,6 +48,7 @@ export default async function Home({
       <KeyboardHints shortcuts={[
         { key: "↑↓", action: "Navigate" },
         { key: "→", action: "Open chat" },
+        { key: "⌘S", action: "Sync" },
       ]} />
       <Suspense fallback={<div>Loading...</div>}>
         <ChatTable

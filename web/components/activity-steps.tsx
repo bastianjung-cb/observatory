@@ -99,7 +99,7 @@ function colorizeJson(json: string): { text: string; className: string }[] {
       tokens.push({ text: match[2], className: "text-[#6b7b8d] dark:text-[#6b7b8d]" });
     } else if (match[3]) {
       // String — cyan / cyan
-      tokens.push({ text: match[3], className: "text-[#3FC1C9] dark:text-[#5DD8E0]" });
+      tokens.push({ text: match[3], className: "text-[#2a9fa6] dark:text-[#5DD8E0]" });
     } else if (match[4]) {
       // Number — hot pink / hot pink
       tokens.push({ text: match[4], className: "text-[#FC5185] dark:text-[#FC5185]" });
@@ -368,10 +368,13 @@ function PromptView({
   onClose: () => void;
 }) {
   const [hideSystem, setHideSystem] = useState(true);
+  const [reversed, setReversed] = useState(true);
 
   const prompt: PromptMessage[] = (activity.input as Record<string, unknown>)?.options
     ? ((activity.input as Record<string, unknown>).options as Record<string, unknown>)?.prompt as PromptMessage[] || []
     : [];
+
+  const displayPrompt = reversed ? [...prompt].reverse() : prompt;
 
   const systemCount = prompt.filter((m) => m.role === "system").length;
 
@@ -393,6 +396,10 @@ function PromptView({
       if (e.key === "s" || e.key === "S") {
         e.preventDefault();
         setHideSystem((prev) => !prev);
+      }
+      if (e.key === "r" || e.key === "R") {
+        e.preventDefault();
+        setReversed((prev) => !prev);
       }
     }
     window.addEventListener("keydown", handleKey);
@@ -420,7 +427,7 @@ function PromptView({
           </div>
           <div className="flex-1 overflow-auto p-4">
             <div className="space-y-3">
-              {prompt.map((msg, i) => {
+              {displayPrompt.map((msg, i) => {
                 if (msg.role === "system" && hideSystem) {
                   const textPreview = extractTextFromContent(msg.content);
                   return (
@@ -463,6 +470,7 @@ function PromptView({
         <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
           {[
             { key: "S", action: hideSystem ? "Show system" : "Hide system" },
+            { key: "R", action: "Reverse order" },
             { key: "←", action: "Close" },
           ].map((s) => (
             <span key={s.key} className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -504,7 +512,7 @@ export function ActivitySteps({
   const router = useRouter();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [overlayMode, setOverlayMode] = useState<"json" | "prompt" | null>(null);
-  const [reversed, setReversed] = useState(false);
+  const [reversed, setReversed] = useState(true);
   const [filterOpen, setFilterOpen] = useState(false);
   const [overlaySearch, setOverlaySearch] = useState("");
   const [activeMatch, setActiveMatch] = useState(0);

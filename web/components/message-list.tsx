@@ -72,7 +72,7 @@ export function MessageList({
 }) {
   const router = useRouter();
   const [fullText, setFullText] = useState(false);
-  const [reversed, setReversed] = useState(false);
+  const [reversed, setReversed] = useState(true);
 
   const displayMessages = reversed ? [...messages].reverse() : messages;
 
