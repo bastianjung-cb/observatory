@@ -175,7 +175,18 @@ export function MessageList({
                     className="inline-flex items-center justify-center w-6 h-6 rounded border border-border bg-background hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
                     onClick={(e) => {
                       e.stopPropagation();
-                      navigator.clipboard.writeText(msg.workflow_id!);
+                      try {
+                        navigator.clipboard.writeText(msg.workflow_id!);
+                      } catch {
+                        const ta = document.createElement("textarea");
+                        ta.value = msg.workflow_id!;
+                        ta.style.position = "fixed";
+                        ta.style.opacity = "0";
+                        document.body.appendChild(ta);
+                        ta.select();
+                        document.execCommand("copy");
+                        document.body.removeChild(ta);
+                      }
                     }}
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
