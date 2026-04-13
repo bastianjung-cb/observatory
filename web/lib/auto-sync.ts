@@ -1,20 +1,19 @@
 import { exec } from "child_process";
-import { getSetting, setSetting } from "@/lib/queries/settings";
+import { resolve as resolvePath } from "path";
+import { getSetting, setSetting, getLastSyncRun } from "@/lib/queries/settings";
 
 let intervalId: ReturnType<typeof setInterval> | null = null;
 let enabled = false;
-let lastRun: Date | null = null;
 let lastResult: "success" | "error" | null = null;
-let nextRun: Date | null = null;
 let initialized = false;
 
-const SYNC_COMMAND = "cd /mnt/observer_app && uv run python main.py --skip-migrations";
-const INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+const PROJECT_ROOT = resolvePath(process.cwd(), "..");
+const SYNC_COMMAND = `cd "${PROJECT_ROOT}" && uv run python main.py --skip-migrations`;
+const INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 
 function runSync() {
   console.log("[auto-sync] Starting sync...");
   exec(SYNC_COMMAND, { timeout: 120000 }, (error, stdout, stderr) => {
-    lastRun = new Date();
     if (error) {
       console.error("[auto-sync] Failed:", stderr);
       lastResult = "error";
@@ -29,12 +28,10 @@ function startTimer() {
   if (intervalId) return;
   enabled = true;
   runSync();
-  nextRun = new Date(Date.now() + INTERVAL_MS);
   intervalId = setInterval(() => {
     runSync();
-    nextRun = new Date(Date.now() + INTERVAL_MS);
   }, INTERVAL_MS);
-  console.log("[auto-sync] Enabled (every 60 min)");
+  console.log("[auto-sync] Enabled (every 15 min)");
 }
 
 function stopTimer() {
@@ -43,7 +40,6 @@ function stopTimer() {
     intervalId = null;
   }
   enabled = false;
-  nextRun = null;
   console.log("[auto-sync] Disabled");
 }
 
@@ -66,11 +62,15 @@ export async function stopAutoSync() {
   await setSetting("auto_sync_enabled", "false");
 }
 
-export function getAutoSyncStatus() {
+export async function getAutoSyncStatus() {
+  const lastRun = await getLastSyncRun();
+  const nextRun = enabled && lastRun
+    ? new Date(new Date(lastRun).getTime() + INTERVAL_MS).toISOString()
+    : null;
   return {
     enabled,
-    lastRun: lastRun?.toISOString() ?? null,
+    lastRun,
     lastResult,
-    nextRun: nextRun?.toISOString() ?? null,
+    nextRun,
   };
 }

@@ -4,7 +4,7 @@ import { exec } from "child_process";
 import { resolve as resolvePath } from "path";
 import { revalidatePath } from "next/cache";
 
-const PROJECT_ROOT = resolvePath(__dirname, "..", "..", "..");
+const PROJECT_ROOT = resolvePath(process.cwd(), "..");
 
 export async function runSync(): Promise<{ success: boolean; message: string }> {
   return new Promise((resolve) => {

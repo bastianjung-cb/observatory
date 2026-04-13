@@ -56,7 +56,7 @@ export function AutoSyncToggle() {
         <div>
           <p className="font-medium">Auto Sync</p>
           <p className="text-sm text-muted-foreground">
-            {enabled ? "Running every hour" : "Disabled"}
+            {enabled ? "Running every 15 min" : "Disabled"}
           </p>
         </div>
         <Switch

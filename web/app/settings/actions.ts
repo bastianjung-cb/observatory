@@ -29,14 +29,14 @@ export async function removeModelPricing(formData: FormData) {
 
 export async function toggleAutoSync() {
   await initAutoSync();
-  const status = getAutoSyncStatus();
+  const status = await getAutoSyncStatus();
   if (status.enabled) {
     await stopAutoSync();
   } else {
     await startAutoSync();
   }
   revalidatePath("/settings");
-  return getAutoSyncStatus();
+  return await getAutoSyncStatus();
 }
 
 export async function fetchAutoSyncStatus() {

@@ -37,6 +37,13 @@ export async function setSetting(key: string, value: string): Promise<void> {
   );
 }
 
+export async function getLastSyncRun(): Promise<string | null> {
+  const result = await pool.query(
+    `SELECT MAX(last_sync_at) AS last_run FROM sync_state`
+  );
+  return result.rows[0]?.last_run?.toISOString() ?? null;
+}
+
 export async function getEntityCounts(): Promise<EntityCounts> {
   const result = await pool.query(`
     SELECT
