@@ -60,6 +60,9 @@ TEMPORAL_NAMESPACE=default
 
 # Temporal UI (for deep-link button in the app)
 TEMPORAL_UI_URL=https://your-temporal-ui.example.com
+
+# App URL (for "Chat now" button linking to the main product)
+APP_URL=https://your-app.example.com/
 ```
 
 ## Quick Start
@@ -245,8 +248,20 @@ The app is keyboard-first. Arrow keys navigate, right arrow drills in, left arro
 - **Dark mode** — default dark, toggle in header, no flash on navigation
 - **Position memory** — remembers selected item when navigating back
 - **Sync from UI** — "Sync Now" button in header
+- **Auto sync** — hourly background sync, toggle on/off from Settings page
 
 ## Data Sync
+
+### Manual
+
+- Click **"Sync Now"** in the header for an immediate sync
+- Run `make sync` from the command line
+
+### Auto Sync
+
+Enable hourly background sync from the **Settings** page. When enabled, the Next.js server runs the sync pipeline every 60 minutes. The first sync runs immediately on enable. Status (last run time, success/error) is shown on the Settings page.
+
+Note: auto-sync state lives in server memory — it resets when the server restarts. Re-enable it after a restart if needed.
 
 ### Strategy
 

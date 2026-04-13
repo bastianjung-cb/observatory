@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { upsertModelPricing, deleteModelPricing } from "@/lib/queries/activities";
+import { startAutoSync, stopAutoSync, getAutoSyncStatus } from "@/lib/auto-sync";
 
 export async function saveModelPricing(formData: FormData) {
   const modelId = formData.get("model_id") as string;
@@ -24,4 +25,19 @@ export async function removeModelPricing(formData: FormData) {
   await deleteModelPricing(id);
   revalidatePath("/settings");
   revalidatePath("/");
+}
+
+export async function toggleAutoSync() {
+  const status = getAutoSyncStatus();
+  if (status.enabled) {
+    stopAutoSync();
+  } else {
+    startAutoSync();
+  }
+  revalidatePath("/settings");
+  return getAutoSyncStatus();
+}
+
+export async function fetchAutoSyncStatus() {
+  return getAutoSyncStatus();
 }

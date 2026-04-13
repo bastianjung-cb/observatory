@@ -5,7 +5,7 @@ import { SyncButton } from "@/components/sync-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { KeyboardProvider } from "@/components/keyboard-context";
 import { KeyboardFooter } from "@/components/keyboard-hints";
-import { Settings, DollarSign } from "lucide-react";
+import { Settings, DollarSign, ExternalLink } from "lucide-react";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -38,11 +38,22 @@ export default function RootLayout({
           <div className="h-screen flex flex-col overflow-hidden">
             <header className="border-b px-6 py-3 flex items-center justify-between shrink-0 bg-background">
               <a href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-                <img src="/logo-black.png" alt="Cellbyte" className="h-6 w-6 dark:hidden" />
-                <img src="/logo-white.png" alt="Cellbyte" className="h-6 w-6 hidden dark:block" />
+                <img src="/logo-black.png" alt="Cellbyte" className="h-6 object-contain dark:hidden" />
+                <img src="/logo-white.png" alt="Cellbyte" className="h-6 object-contain hidden dark:block" />
                 <h1 className="text-lg font-semibold">Cellbyte Observatory</h1>
               </a>
               <div className="flex items-center gap-3">
+                {process.env.APP_URL && (
+                  <a
+                    href={process.env.APP_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-1.5 text-xs font-medium hover:bg-accent transition-colors"
+                  >
+                    Chat now
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
                 <SyncButton />
                 <ThemeToggle />
                 <a href="/dashboard" className="text-muted-foreground hover:text-foreground transition-colors" title="Usage Dashboard">

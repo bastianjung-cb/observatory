@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/table";
 import { saveModelPricing, removeModelPricing } from "./actions";
 import { EscapeToHome } from "./escape-to-home";
+import { AutoSyncToggle } from "./auto-sync-toggle";
 
 export default async function SettingsPage() {
   let models: ModelPricing[];
@@ -92,6 +93,11 @@ export default async function SettingsPage() {
           )}
         </div>
       )}
+
+      {/* Auto Sync */}
+      <div className="mb-8">
+        <AutoSyncToggle />
+      </div>
 
       {/* Model Pricing */}
       <h3 className="text-lg font-semibold mb-4">Model Pricing</h3>
