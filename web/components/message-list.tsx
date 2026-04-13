@@ -115,7 +115,7 @@ export function MessageList({
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [messages, selectedIndex]);
+  }, [messages, selectedIndex, displayMessages]);
 
   const selectedRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
