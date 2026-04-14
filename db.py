@@ -174,14 +174,27 @@ ON CONFLICT (id) DO UPDATE SET
 def upsert_users(conn: psycopg.Connection, users: list[dict[str, Any]]) -> None:
     source_ids = [u["id"] for u in users]
     with conn.cursor() as cur:
-        # Remove users not in source (handles switching between environments)
+        for user in users:
+            cur.execute(
+                "SELECT id FROM users WHERE auth_id = %(auth_id)s AND id != %(id)s",
+                user,
+            )
+            old = cur.fetchone()
+            if old:
+                old_id = old[0]
+                placeholder = f"__migrating__{old_id}"
+                cur.execute("UPDATE users SET auth_id = %s WHERE id = %s", (placeholder, old_id))
+                cur.execute(UPSERT_USER_SQL, user)
+                cur.execute("UPDATE chats SET user_id = %s WHERE user_id = %s", (user["id"], old_id))
+                cur.execute("DELETE FROM users WHERE id = %s", (old_id,))
+            else:
+                cur.execute(UPSERT_USER_SQL, user)
         if source_ids:
             cur.execute(
-                "DELETE FROM users WHERE id != ALL(%s)",
+                "DELETE FROM users WHERE id != ALL(%s) "
+                "AND id NOT IN (SELECT DISTINCT user_id FROM chats)",
                 (source_ids,),
             )
-        for user in users:
-            cur.execute(UPSERT_USER_SQL, user)
     conn.commit()
 
 
