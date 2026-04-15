@@ -22,6 +22,13 @@ export interface CostSummaryCard {
   total_chats: number;
 }
 
+export interface ColGenSummaryCard {
+  total_cost: number;
+  total_llm_calls: number;
+  total_columns: number;
+  total_cells: number;
+}
+
 /** Chat-only daily costs. */
 export async function getDailyCosts(from: string, to: string): Promise<DailyCost[]> {
   const result = await pool.query(
@@ -123,6 +130,35 @@ export async function getCostSummary(from: string, to: string): Promise<CostSumm
      WHERE a.activity_type = 'invokeModel'
        AND a.scheduled_time >= $1::timestamptz
        AND a.scheduled_time < ($2::timestamptz + interval '1 day')`,
+    [from, to]
+  );
+  return result.rows[0];
+}
+
+/** Column-generation-only cost summary. */
+export async function getColGenSummary(from: string, to: string): Promise<ColGenSummaryCard> {
+  const result = await pool.query(
+    `SELECT
+       COALESCE(SUM(
+         CASE WHEN mp.id IS NOT NULL THEN
+           (
+             COALESCE((a.output->'usage'->'inputTokens'->>'noCache')::numeric, 0) * mp.input_price
+             + COALESCE((a.output->'usage'->'inputTokens'->>'cacheRead')::numeric, 0) * COALESCE(mp.cache_read_price, mp.input_price)
+             + COALESCE((a.output->'usage'->'outputTokens'->>'text')::numeric, 0) * mp.output_price
+             + COALESCE((a.output->'usage'->'outputTokens'->>'reasoning')::numeric, 0) * COALESCE(mp.reasoning_price, mp.output_price)
+           ) / 1000000.0
+         ELSE 0 END
+       ), 0)::float AS total_cost,
+       COUNT(*)::int AS total_llm_calls,
+       COUNT(DISTINCT cgw.id)::int AS total_columns,
+       COALESCE((SELECT SUM((cgw2.metadata->>'totalRows')::int) FROM column_generation_workflows cgw2 JOIN workflows w2 ON w2.workflow_id = cgw2.workflow_id WHERE w2.start_time >= $1::timestamptz AND w2.start_time < ($2::timestamptz + interval '1 day')), 0)::int AS total_cells
+     FROM column_generation_workflows cgw
+     JOIN workflows root ON root.workflow_id = cgw.workflow_id
+     JOIN workflows w ON w.workflow_id = cgw.workflow_id OR w.parent_workflow_id = cgw.workflow_id
+     JOIN activities a ON a.workflow_id = w.workflow_id AND a.activity_type = 'invokeModel'
+     LEFT JOIN model_pricing mp ON mp.model_id = a.input->>'modelId'
+     WHERE root.start_time >= $1::timestamptz
+       AND root.start_time < ($2::timestamptz + interval '1 day')`,
     [from, to]
   );
   return result.rows[0];

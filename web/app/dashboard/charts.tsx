@@ -188,8 +188,8 @@ export function DashboardCharts({
                     stroke={PURPLE}
                     strokeWidth={2}
                     fill="url(#costGradient)"
-                    dot={{ fill: PURPLE, r: 3, strokeWidth: 0 }}
-                    activeDot={{ fill: PURPLE_DARK, r: 5, strokeWidth: 0 }}
+                    dot={{ fill: PURPLE, r: 4, strokeWidth: 0 }}
+                    activeDot={{ fill: PURPLE_DARK, r: 6, strokeWidth: 0 }}
                     label={costPeakLabel}
                   />
                 </AreaChart>
@@ -226,8 +226,8 @@ export function DashboardCharts({
                     stroke={PURPLE_DARK}
                     strokeWidth={2}
                     fill="url(#tokenGradient)"
-                    dot={{ fill: PURPLE_DARK, r: 3, strokeWidth: 0 }}
-                    activeDot={{ fill: PURPLE, r: 5, strokeWidth: 0 }}
+                    dot={{ fill: PURPLE_DARK, r: 4, strokeWidth: 0 }}
+                    activeDot={{ fill: PURPLE, r: 6, strokeWidth: 0 }}
                     label={tokenPeakLabel}
                   />
                 </AreaChart>
@@ -334,7 +334,7 @@ export function DashboardCharts({
                 tick={{ fontSize: 10 }}
                 stroke="var(--muted-foreground)"
                 width={60}
-                label={{ value: "Rows", angle: 90, position: "insideRight", style: { fontSize: 10, fill: "var(--muted-foreground)" } }}
+                label={{ value: "Cells", angle: 90, position: "insideRight", style: { fontSize: 10, fill: "var(--muted-foreground)" } }}
               />
               <Tooltip
                 contentStyle={tooltipStyle}
@@ -348,18 +348,18 @@ export function DashboardCharts({
                 name="Columns Created"
                 stroke={PURPLE}
                 strokeWidth={2}
-                dot={{ fill: PURPLE, r: 3, strokeWidth: 0 }}
-                activeDot={{ fill: PURPLE_DARK, r: 5, strokeWidth: 0 }}
+                dot={{ fill: PURPLE, r: 4, strokeWidth: 0 }}
+                activeDot={{ fill: PURPLE_DARK, r: 6, strokeWidth: 0 }}
               />
               <Line
                 yAxisId="right"
                 type="monotone"
                 dataKey="rows_generated"
-                name="Rows Generated"
+                name="Cells Generated"
                 stroke="#E8E0D0"
                 strokeWidth={2}
-                dot={{ fill: "#E8E0D0", r: 3, strokeWidth: 0 }}
-                activeDot={{ fill: "#F5F0E8", r: 5, strokeWidth: 0 }}
+                dot={{ fill: "#E8E0D0", r: 4, strokeWidth: 0 }}
+                activeDot={{ fill: "#F5F0E8", r: 6, strokeWidth: 0 }}
               />
             </LineChart>
           </ResponsiveContainer>
@@ -378,7 +378,7 @@ export function DashboardCharts({
           </span>
           <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: "#E8E0D0" }} />
-            Rows Generated
+            Cells Generated
           </span>
         </div>
         {columnCreationUserStats.length === 0 ? (
@@ -413,7 +413,7 @@ export function DashboardCharts({
             </div>
             {/* Rows generated bars */}
             <div>
-              <p className="text-xs text-muted-foreground font-medium mb-2">Rows Generated</p>
+              <p className="text-xs text-muted-foreground font-medium mb-2">Cells Generated</p>
               <ResponsiveContainer width="100%" height={Math.max(columnCreationUserStats.length * 40, 100)}>
                 <BarChart
                   data={[...columnCreationUserStats].sort((a, b) => b.rows_generated - a.rows_generated)}
@@ -425,7 +425,7 @@ export function DashboardCharts({
                   <YAxis type="category" dataKey="user_name" tick={{ fontSize: 11, fill: "var(--foreground)" }} stroke="var(--muted-foreground)" width={120} />
                   <Tooltip
                     contentStyle={tooltipStyle}
-                    formatter={(value) => [Number(value).toLocaleString(), "Rows Generated"]}
+                    formatter={(value) => [Number(value).toLocaleString(), "Cells Generated"]}
                     labelFormatter={(label) => String(label)}
                   />
                   <Bar
@@ -480,8 +480,8 @@ export function DashboardCharts({
                 stroke={PURPLE}
                 strokeWidth={2}
                 fill="url(#colCostGradient)"
-                dot={{ fill: PURPLE, r: 3, strokeWidth: 0 }}
-                activeDot={{ fill: PURPLE_DARK, r: 5, strokeWidth: 0 }}
+                dot={{ fill: PURPLE, r: 4, strokeWidth: 0 }}
+                activeDot={{ fill: PURPLE_DARK, r: 6, strokeWidth: 0 }}
               />
             </AreaChart>
           </ResponsiveContainer>
