@@ -11,6 +11,8 @@ def db_conn():
     conn = psycopg.connect(POSTGRES_DSN)
     yield conn
     with conn.cursor() as cur:
+        cur.execute("DROP TABLE IF EXISTS column_generation_workflows CASCADE")
+        cur.execute("DROP TABLE IF EXISTS chat_workflows CASCADE")
         cur.execute("DROP TABLE IF EXISTS activities CASCADE")
         cur.execute("DROP TABLE IF EXISTS workflows CASCADE")
         cur.execute("DROP TABLE IF EXISTS message_parts CASCADE")
@@ -61,7 +63,6 @@ from datetime import datetime, timezone
 def _sample_workflow(workflow_id="chat-9e138348-0b53-407e-900e-ccacb83ecf6f"):
     return {
         "workflow_id": workflow_id,
-        "message_id": "9e138348-0b53-407e-900e-ccacb83ecf6f",
         "run_id": "run-abc-123",
         "status": "COMPLETED",
         "start_time": datetime(2026, 1, 1, tzinfo=timezone.utc),
@@ -247,7 +248,9 @@ def test_init_schema_creates_all_tables(db_conn):
         tables = [row[0] for row in cur.fetchall()]
 
     assert "activities" in tables
+    assert "chat_workflows" in tables
     assert "chats" in tables
+    assert "column_generation_workflows" in tables
     assert "message_parts" in tables
     assert "messages" in tables
     assert "sync_state" in tables

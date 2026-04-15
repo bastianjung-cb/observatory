@@ -1,76 +1,65 @@
 import { notFound } from "next/navigation";
-import {
-  getMessageInfo,
-  getWorkflowForMessage,
-  getWorkflow,
-  getActivities,
-  getChildWorkflows,
-  getWorkflowBreadcrumbs,
-  getWorkflowCostSummary,
-} from "@/lib/queries/activities";
+import { getColumnCreation, getColumnCreationCostSummary } from "@/lib/queries/column-creations";
+import { getWorkflow, getActivities, getChildWorkflows, getChildWorkflowsWithDetails, getWorkflowBreadcrumbs } from "@/lib/queries/activities";
 import { ActivitySteps } from "@/components/activity-steps";
 import { Badge } from "@/components/ui/badge";
 import { KeyboardHints } from "@/components/keyboard-hints";
 
-export default async function ActivityPage({
+function formatTokens(n: number): string {
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
+}
+
+export default async function ColumnCreationDetailPage({
   params,
   searchParams,
 }: {
-  params: Promise<{ id: string; messageId: string }>;
+  params: Promise<{ batchId: string }>;
   searchParams: Promise<{ wf?: string }>;
 }) {
-  const { id, messageId } = await params;
+  const { batchId } = await params;
   const sp = await searchParams;
-  const messageInfo = await getMessageInfo(messageId);
+  const detail = await getColumnCreation(batchId);
 
-  if (!messageInfo) {
+  if (!detail) {
     notFound();
   }
 
-  // If a specific workflow is requested via ?wf=, use that (drill-down)
-  // Otherwise use the root workflow for this message
+  const metadata = detail.metadata as Record<string, unknown> | null;
+
   let workflow;
   if (sp.wf) {
     workflow = await getWorkflow(sp.wf);
   } else {
-    workflow = await getWorkflowForMessage(messageId);
+    workflow = await getWorkflow(detail.workflow_id);
   }
 
   if (!workflow) {
     return (
       <div>
-        <h2 className="text-2xl font-bold mb-2">
-          {messageInfo.chat_title || "Untitled Chat"}
-        </h2>
-        <p className="text-muted-foreground">
-          No workflow found for this message.
-        </p>
+        <h2 className="text-2xl font-bold mb-2">{(metadata?.columnName as string) || "Column Creation"}</h2>
+        <p className="text-muted-foreground">No workflow found for this batch.</p>
       </div>
     );
   }
 
   const activities = await getActivities(workflow.workflow_id);
-  const childWorkflows = await getChildWorkflows(workflow.workflow_id);
+  const childWorkflows = await getChildWorkflowsWithDetails(workflow.workflow_id);
   const breadcrumbs = await getWorkflowBreadcrumbs(workflow.workflow_id);
-  const costSummary = await getWorkflowCostSummary(workflow.workflow_id);
-
-  function formatTokens(n: number): string {
-    if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
-    if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
-    return String(n);
-  }
+  const costSummary = await getColumnCreationCostSummary(detail.workflow_id);
 
   return (
     <div className="flex flex-col -mx-6 -mt-6 -mb-6" style={{ height: "calc(100vh - 90px)" }}>
       {/* Fixed header */}
       <div className="shrink-0 bg-background border-b px-6 py-3">
         <h2 className="text-lg font-bold">
-          {messageInfo.chat_title || "Untitled Chat"}
+          {(metadata?.columnName as string) || "Unnamed Column"}
         </h2>
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <div className="flex items-center gap-2">
-            <Badge variant="secondary">{messageInfo.role}</Badge>
-            <span>message</span>
+            <Badge variant="secondary">{(metadata?.variant as string) || "text"}</Badge>
+            <span>{(metadata?.completedRows as number) || 0}/{(metadata?.totalRows as number) || 0} rows</span>
             <span>&middot;</span>
             <Badge variant="outline">{workflow.status}</Badge>
             <span>{activities.length} activities</span>
@@ -99,8 +88,8 @@ export default async function ActivityPage({
             {breadcrumbs.map((crumb, i) => {
               const isLast = i === breadcrumbs.length - 1;
               const href = i === 0
-                ? `/chats/${id}/messages/${messageId}`
-                : `/chats/${id}/messages/${messageId}?wf=${crumb.workflow_id}`;
+                ? `/column-creations/${batchId}`
+                : `/column-creations/${batchId}?wf=${crumb.workflow_id}`;
               return (
                 <span key={crumb.workflow_id} className="flex items-center gap-1">
                   {i > 0 && <span className="text-muted-foreground/50">›</span>}
@@ -134,8 +123,8 @@ export default async function ActivityPage({
         <ActivitySteps
           activities={activities}
           childWorkflows={childWorkflows}
-          basePath={`/chats/${id}/messages/${messageId}`}
-          backPath={`/chats/${id}`}
+          basePath={`/column-creations/${batchId}`}
+          backPath="/column-creations"
           parentWorkflowId={workflow.parent_workflow_id ?? undefined}
         />
       </div>

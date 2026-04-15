@@ -46,7 +46,6 @@ CREATE TABLE IF NOT EXISTS message_parts (
 CREATE TABLE IF NOT EXISTS workflows (
     id                  SERIAL PRIMARY KEY,
     workflow_id         TEXT UNIQUE NOT NULL,
-    message_id          UUID,
     parent_workflow_id  TEXT REFERENCES workflows(workflow_id),
     workflow_name       TEXT,
     run_id              TEXT NOT NULL,
@@ -56,6 +55,20 @@ CREATE TABLE IF NOT EXISTS workflows (
     input               JSONB,
     output              JSONB,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS chat_workflows (
+    id              SERIAL PRIMARY KEY,
+    workflow_id     TEXT UNIQUE NOT NULL REFERENCES workflows(workflow_id),
+    message_id      UUID
+);
+
+CREATE TABLE IF NOT EXISTS column_generation_workflows (
+    id              SERIAL PRIMARY KEY,
+    workflow_id     TEXT UNIQUE NOT NULL REFERENCES workflows(workflow_id),
+    batch_id        UUID NOT NULL,
+    user_id         UUID REFERENCES users(id),
+    metadata        JSONB
 );
 
 CREATE TABLE IF NOT EXISTS activities (
@@ -108,7 +121,9 @@ CREATE INDEX IF NOT EXISTS idx_chats_user_id ON chats(user_id);
 CREATE INDEX IF NOT EXISTS idx_chats_updated_at ON chats(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_chat_id_order ON messages(chat_id, "order");
 CREATE INDEX IF NOT EXISTS idx_message_parts_message_id_order ON message_parts(message_id, "order");
-CREATE INDEX IF NOT EXISTS idx_workflows_message_id ON workflows(message_id);
+CREATE INDEX IF NOT EXISTS idx_chat_workflows_message_id ON chat_workflows(message_id);
+CREATE INDEX IF NOT EXISTS idx_column_generation_workflows_batch_id ON column_generation_workflows(batch_id);
+CREATE INDEX IF NOT EXISTS idx_column_generation_workflows_user_id ON column_generation_workflows(user_id);
 CREATE INDEX IF NOT EXISTS idx_workflows_parent ON workflows(parent_workflow_id);
 CREATE INDEX IF NOT EXISTS idx_activities_workflow_id ON activities(workflow_id);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
@@ -121,7 +136,6 @@ CREATE INDEX IF NOT EXISTS idx_message_parts_content_text ON message_parts USING
 MIGRATIONS_SQL = """
 ALTER TABLE workflows ADD COLUMN IF NOT EXISTS parent_workflow_id TEXT REFERENCES workflows(workflow_id);
 ALTER TABLE workflows ADD COLUMN IF NOT EXISTS workflow_name TEXT;
-ALTER TABLE workflows ALTER COLUMN message_id DROP NOT NULL;
 ALTER TABLE activities ADD COLUMN IF NOT EXISTS attempt INTEGER NOT NULL DEFAULT 1;
 """
 
@@ -256,8 +270,8 @@ TERMINAL_STATUSES = frozenset({
 })
 
 UPSERT_WORKFLOW_SQL = """
-INSERT INTO workflows (workflow_id, message_id, parent_workflow_id, workflow_name, run_id, status, start_time, end_time, input, output)
-VALUES (%(workflow_id)s, %(message_id)s, %(parent_workflow_id)s, %(workflow_name)s, %(run_id)s, %(status)s, %(start_time)s, %(end_time)s, %(input)s, %(output)s)
+INSERT INTO workflows (workflow_id, parent_workflow_id, workflow_name, run_id, status, start_time, end_time, input, output)
+VALUES (%(workflow_id)s, %(parent_workflow_id)s, %(workflow_name)s, %(run_id)s, %(status)s, %(start_time)s, %(end_time)s, %(input)s, %(output)s)
 ON CONFLICT (workflow_id) DO UPDATE SET
     status = EXCLUDED.status,
     end_time = EXCLUDED.end_time,
@@ -275,6 +289,38 @@ def upsert_workflow(conn: psycopg.Connection, workflow: dict[str, Any]) -> None:
     }
     with conn.cursor() as cur:
         cur.execute(UPSERT_WORKFLOW_SQL, params)
+    conn.commit()
+
+
+UPSERT_CHAT_WORKFLOW_SQL = """
+INSERT INTO chat_workflows (workflow_id, message_id)
+VALUES (%(workflow_id)s, %(message_id)s)
+ON CONFLICT (workflow_id) DO NOTHING
+"""
+
+
+def upsert_chat_workflow(conn: psycopg.Connection, workflow_id: str, message_id: str) -> None:
+    with conn.cursor() as cur:
+        cur.execute(UPSERT_CHAT_WORKFLOW_SQL, {"workflow_id": workflow_id, "message_id": message_id})
+    conn.commit()
+
+
+UPSERT_COLUMN_GENERATION_WORKFLOW_SQL = """
+INSERT INTO column_generation_workflows (workflow_id, batch_id, user_id, metadata)
+VALUES (%(workflow_id)s, %(batch_id)s, %(user_id)s, %(metadata)s)
+ON CONFLICT (workflow_id) DO UPDATE SET
+    user_id = EXCLUDED.user_id,
+    metadata = EXCLUDED.metadata
+"""
+
+
+def upsert_column_generation_workflow(conn: psycopg.Connection, data: dict[str, Any]) -> None:
+    params = {
+        **data,
+        "metadata": json.dumps(data["metadata"]) if data["metadata"] is not None else None,
+    }
+    with conn.cursor() as cur:
+        cur.execute(UPSERT_COLUMN_GENERATION_WORKFLOW_SQL, params)
     conn.commit()
 
 

@@ -42,7 +42,7 @@ export async function getMessages(chatId: string): Promise<MessageRow[]> {
        m.role,
        m.metadata,
        COALESCE(
-         (SELECT w.end_time FROM workflows w WHERE w.message_id = m.id LIMIT 1),
+         (SELECT w.end_time FROM chat_workflows cw JOIN workflows w ON w.workflow_id = cw.workflow_id WHERE cw.message_id = m.id LIMIT 1),
          m.created_at
        ) as created_at,
        (
@@ -51,10 +51,10 @@ export async function getMessages(chatId: string): Promise<MessageRow[]> {
          WHERE mp.message_id = m.id AND mp.content->>'type' = 'text'
        ) as content_preview,
        EXISTS (
-         SELECT 1 FROM workflows w WHERE w.message_id = m.id
+         SELECT 1 FROM chat_workflows cw WHERE cw.message_id = m.id
        ) as has_workflow,
-       (SELECT w.workflow_id FROM workflows w WHERE w.message_id = m.id LIMIT 1) as workflow_id,
-       (SELECT w.run_id FROM workflows w WHERE w.message_id = m.id LIMIT 1) as run_id,
+       (SELECT w.workflow_id FROM chat_workflows cw JOIN workflows w ON w.workflow_id = cw.workflow_id WHERE cw.message_id = m.id LIMIT 1) as workflow_id,
+       (SELECT w.run_id FROM chat_workflows cw JOIN workflows w ON w.workflow_id = cw.workflow_id WHERE cw.message_id = m.id LIMIT 1) as run_id,
        (
          SELECT COALESCE(SUM(
            CASE WHEN mp.id IS NOT NULL THEN
@@ -66,10 +66,11 @@ export async function getMessages(chatId: string): Promise<MessageRow[]> {
              ) / 1000000.0
            ELSE 0 END
          ), 0)
-         FROM workflows w
+         FROM chat_workflows cw
+         JOIN workflows w ON w.workflow_id = cw.workflow_id
          JOIN activities act ON act.workflow_id = w.workflow_id AND act.activity_type = 'invokeModel'
          LEFT JOIN model_pricing mp ON mp.model_id = act.input->>'modelId'
-         WHERE w.message_id = m.id
+         WHERE cw.message_id = m.id
        ) as cost_usd
      FROM messages m
      WHERE m.chat_id = $1

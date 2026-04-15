@@ -490,6 +490,11 @@ interface ChildWorkflow {
   status: string;
   start_time: string;
   end_time: string | null;
+  cost_usd?: number | null;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  output_value?: string | null;
+  input_label?: string | null;
 }
 
 type ListItem =
@@ -499,14 +504,14 @@ type ListItem =
 export function ActivitySteps({
   activities,
   childWorkflows = [],
-  chatId,
-  messageId,
+  basePath,
+  backPath,
   parentWorkflowId,
 }: {
   activities: Activity[];
   childWorkflows?: ChildWorkflow[];
-  chatId: string;
-  messageId: string;
+  basePath: string;
+  backPath: string;
   parentWorkflowId?: string;
 }) {
   const router = useRouter();
@@ -592,15 +597,15 @@ export function ActivitySteps({
 
   const { selectedIndex } = useKeyboardNav({
     itemCount: displayItems.length,
-    storageKey: `activities:${chatId}:${messageId}`,
+    storageKey: `activities:${basePath}`,
     onEscape: () => {
       if (expandedId) {
         closeOverlay();
       } else if (parentWorkflowId) {
         // Go back to parent workflow
-        router.push(`/chats/${chatId}/messages/${messageId}?wf=${parentWorkflowId}`);
+        router.push(`${basePath}?wf=${parentWorkflowId}`);
       } else {
-        router.push(`/chats/${chatId}`);
+        router.push(backPath);
       }
     },
     onEnter: (index) => {
@@ -608,7 +613,7 @@ export function ActivitySteps({
       if (!item) return;
       if (item.kind === "child") {
         // Drill into child workflow
-        router.push(`/chats/${chatId}/messages/${messageId}?wf=${item.data.workflow_id}`);
+        router.push(`${basePath}?wf=${item.data.workflow_id}`);
       } else {
         // Enter always opens JSON view for activities
         openOverlay(index, "json");
@@ -619,7 +624,7 @@ export function ActivitySteps({
       if (!item) return;
       if (item.kind === "child") {
         // Space also drills into child
-        router.push(`/chats/${chatId}/messages/${messageId}?wf=${item.data.workflow_id}`);
+        router.push(`${basePath}?wf=${item.data.workflow_id}`);
       } else {
         const activity = item.data;
         if (activity.activity_type === "invokeModel") {
@@ -756,24 +761,47 @@ export function ActivitySteps({
                     index === selectedIndex ? "row-glow" : "border-border hover:bg-accent/50"
                   }`}
                   onClick={() =>
-                    router.push(`/chats/${chatId}/messages/${messageId}?wf=${child.workflow_id}`)
+                    router.push(`${basePath}?wf=${child.workflow_id}`)
                   }
                 >
+                  {/* Left: index + input label + status */}
                   <span className="shrink-0 w-8 text-center text-sm font-mono font-semibold text-muted-foreground/70">
                     {item.originalIndex + 1}
                   </span>
-                  <Badge className="bg-[#6B2C91] text-white shrink-0">CHILD</Badge>
-                  <span className="font-mono text-sm font-bold min-w-0 truncate">
-                    {child.workflow_name || child.workflow_id}
-                  </span>
                   <Badge
                     variant={child.status === "COMPLETED" ? "secondary" : "destructive"}
+                    className="shrink-0"
                   >
                     {child.status}
                   </Badge>
-                  <span className="text-xs text-muted-foreground ml-auto shrink-0">
-                    Enter to drill in →
-                  </span>
+                  {child.input_label && (
+                    <span className="shrink-0 text-xs font-medium text-muted-foreground truncate max-w-[160px]" title={child.input_label}>
+                      {child.input_label}
+                    </span>
+                  )}
+
+                  {/* Middle: output value (takes remaining space) or workflow name */}
+                  {child.output_value ? (
+                    <span className="text-sm min-w-0 flex-1 truncate" title={child.output_value}>
+                      {child.output_value}
+                    </span>
+                  ) : (
+                    <span className="font-mono text-sm font-bold min-w-0 flex-1 truncate">
+                      {child.workflow_name || child.workflow_id}
+                    </span>
+                  )}
+
+                  {/* Right: tokens + cost */}
+                  {(child.input_tokens != null && child.input_tokens > 0) ? (
+                    <div className="flex items-center gap-3 shrink-0 text-xs text-muted-foreground">
+                      <span className="font-mono">{formatTokensCompact(child.input_tokens)} ↑ / {formatTokensCompact(child.output_tokens || 0)} ↓</span>
+                      {(child.cost_usd != null && child.cost_usd > 0) && (
+                        <span className="font-mono font-medium text-foreground">${Number(child.cost_usd).toFixed(4)}</span>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-muted-foreground shrink-0">→</span>
+                  )}
                 </div>
               );
             }

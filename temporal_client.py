@@ -36,6 +36,20 @@ async def list_chat_workflow_ids(client: Client) -> list[dict[str, str]]:
     return workflows
 
 
+async def list_generation_batch_workflow_ids(client: Client) -> list[dict[str, str]]:
+    """List all workflow executions matching generation-batch-* pattern."""
+    workflows = []
+    async for wf in client.list_workflows('WorkflowId STARTS_WITH "generation-batch-"'):
+        workflows.append({
+            "workflow_id": wf.id,
+            "run_id": wf.run_id,
+            "status": wf.status.name if wf.status else "UNKNOWN",
+            "start_time": wf.start_time,
+            "close_time": wf.close_time,
+        })
+    return workflows
+
+
 def _decode_payloads(payloads) -> Any | None:
     """Decode payloads from a Temporal activity. Returns a single value if one payload, or a list if multiple."""
     try:
