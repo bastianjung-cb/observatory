@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { SyncButton } from "@/components/sync-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { KeyboardProvider } from "@/components/keyboard-context";
 import { KeyboardFooter } from "@/components/keyboard-hints";
-import { Settings, DollarSign, ExternalLink } from "lucide-react";
+import { ExternalLink } from "lucide-react";
+import { NavDropdown } from "@/components/nav-dropdown";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -20,9 +22,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: `(function(){var t=localStorage.getItem('theme');if(t==='light')document.documentElement.classList.remove('dark');else document.documentElement.classList.add('dark')})()` }} />
+        <Script id="theme-init" strategy="beforeInteractive">{`(function(){var t=localStorage.getItem('theme');if(t==='light')document.documentElement.classList.remove('dark');else document.documentElement.classList.add('dark')})()`}</Script>
       </head>
       <body className={`${inter.variable} font-sans bg-background text-foreground antialiased`}>
         <KeyboardProvider>
@@ -52,12 +54,7 @@ export default function RootLayout({
                 )}
                 <SyncButton />
                 <ThemeToggle />
-                <a href="/dashboard" className="text-muted-foreground hover:text-foreground transition-colors" title="Usage Dashboard">
-                  <DollarSign className="h-4 w-4" />
-                </a>
-                <a href="/settings" className="text-muted-foreground hover:text-foreground transition-colors" title="Settings">
-                  <Settings className="h-4 w-4" />
-                </a>
+                <NavDropdown />
               </div>
             </header>
             <main className="flex-1 overflow-auto p-6">{children}</main>

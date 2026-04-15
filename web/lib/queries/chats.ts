@@ -87,7 +87,8 @@ export async function getChats(
           ELSE 0 END
         ), 0)
         FROM messages m2
-        JOIN workflows w ON w.message_id = m2.id
+        JOIN chat_workflows cw ON cw.message_id = m2.id
+        JOIN workflows w ON w.workflow_id = cw.workflow_id
         JOIN activities act ON act.workflow_id = w.workflow_id AND act.activity_type = 'invokeModel'
         LEFT JOIN model_pricing mp ON mp.model_id = act.input->>'modelId'
         WHERE m2.chat_id = c.id
@@ -105,7 +106,8 @@ export async function getChats(
             ELSE 0 END
           ), 0)
           FROM messages m2
-          JOIN workflows w ON w.message_id = m2.id
+          JOIN chat_workflows cw ON cw.message_id = m2.id
+        JOIN workflows w ON w.workflow_id = cw.workflow_id
           JOIN activities act ON act.workflow_id = w.workflow_id AND act.activity_type = 'invokeModel'
           LEFT JOIN model_pricing mp ON mp.model_id = act.input->>'modelId'
           WHERE m2.chat_id = c.id

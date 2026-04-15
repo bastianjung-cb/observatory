@@ -12,12 +12,13 @@ import psycopg
 load_dotenv(Path(__file__).parent / ".env")
 
 from app_sync import sync_app_data
-from db import TERMINAL_STATUSES, run_migrations, init_schema, is_workflow_terminal, upsert_activities, upsert_workflow
+from db import TERMINAL_STATUSES, run_migrations, init_schema, is_workflow_terminal, upsert_activities, upsert_workflow, upsert_chat_workflow, upsert_column_generation_workflow
 from temporal_client import (
     _decode_payloads,
     fetch_workflow_history,
     get_client,
     list_chat_workflow_ids,
+    list_generation_batch_workflow_ids,
     parse_activities_from_history,
     parse_child_workflows_from_history,
 )
@@ -51,7 +52,6 @@ async def _ingest_workflow(
     observer_conn: psycopg.Connection,
     workflow_id: str,
     run_id: str,
-    message_id: str | None,
     parent_workflow_id: str | None,
     workflow_name: str | None,
     status: str,
@@ -66,7 +66,6 @@ async def _ingest_workflow(
 
     workflow_data: dict[str, Any] = {
         "workflow_id": workflow_id,
-        "message_id": message_id,
         "parent_workflow_id": parent_workflow_id,
         "workflow_name": workflow_name,
         "run_id": run_id,
@@ -103,7 +102,6 @@ async def _ingest_workflow(
                 observer_conn=observer_conn,
                 workflow_id=child["workflow_id"],
                 run_id=child["run_id"],
-                message_id=None,
                 parent_workflow_id=workflow_id,
                 workflow_name=child.get("workflow_type"),
                 status=child["status"],
@@ -147,13 +145,15 @@ async def sync_temporal_data(observer_conn: psycopg.Connection) -> None:
                 observer_conn=observer_conn,
                 workflow_id=wf_id,
                 run_id=wf["run_id"],
-                message_id=_extract_message_id(wf_id),
                 parent_workflow_id=None,
                 workflow_name=None,
                 status=wf["status"],
                 start_time=wf["start_time"],
                 end_time=wf["close_time"],
             )
+            message_id = _extract_message_id(wf_id)
+            if message_id:
+                upsert_chat_workflow(observer_conn, wf_id, message_id)
         except Exception:
             logger.exception("Failed to process workflow %s, skipping", wf_id)
             continue
@@ -161,6 +161,64 @@ async def sync_temporal_data(observer_conn: psycopg.Connection) -> None:
     logger.info(
         "Temporal sync done. Ingested: %d, Skipped: %d", ingested, skipped
     )
+
+
+def _extract_batch_id(workflow_id: str) -> str | None:
+    """Extract batch UUID from workflow_id like 'generation-batch-550e8400-...'."""
+    if not workflow_id.startswith("generation-batch-"):
+        return None
+    return workflow_id.removeprefix("generation-batch-")
+
+
+async def sync_temporal_generation_data(observer_conn: psycopg.Connection) -> None:
+    """Sync generation batch workflow data from Temporal into observer DB."""
+    logger.info("Connecting to Temporal for generation batches...")
+    temporal_client = await get_client()
+
+    logger.info("Listing generation batch workflows from Temporal...")
+    workflows = await list_generation_batch_workflow_ids(temporal_client)
+    logger.info("Found %d generation batch workflows", len(workflows))
+
+    ingested = 0
+    skipped = 0
+
+    for wf in workflows:
+        wf_id = wf["workflow_id"]
+
+        if wf["status"] not in TERMINAL_STATUSES:
+            skipped += 1
+            continue
+
+        if is_workflow_terminal(observer_conn, wf_id):
+            skipped += 1
+            continue
+
+        try:
+            logger.info("Processing generation workflow %s", wf_id)
+            ingested += await _ingest_workflow(
+                temporal_client=temporal_client,
+                observer_conn=observer_conn,
+                workflow_id=wf_id,
+                run_id=wf["run_id"],
+                parent_workflow_id=None,
+                workflow_name="generateBatchWorkflow",
+                status=wf["status"],
+                start_time=wf["start_time"],
+                end_time=wf["close_time"],
+            )
+            batch_id = _extract_batch_id(wf_id)
+            if batch_id:
+                upsert_column_generation_workflow(observer_conn, {
+                    "workflow_id": wf_id,
+                    "batch_id": batch_id,
+                    "user_id": None,
+                    "metadata": None,
+                })
+        except Exception:
+            logger.exception("Failed to process generation workflow %s, skipping", wf_id)
+            continue
+
+    logger.info("Generation temporal sync done. Ingested: %d, Skipped: %d", ingested, skipped)
 
 
 async def run_sync() -> None:
@@ -183,8 +241,24 @@ async def run_sync() -> None:
             logger.exception("App data sync failed, continuing with temporal sync")
             observer_conn.rollback()
 
-        # Sync temporal data (workflows, activities)
+        # Sync temporal data (chat workflows + activities)
         await sync_temporal_data(observer_conn)
+
+        # Sync temporal data (generation batch workflows + activities)
+        await sync_temporal_generation_data(observer_conn)
+
+        # Enrich generation batches with app DB metadata
+        try:
+            logger.info("Connecting to app DB for generation batch enrichment...")
+            app_conn = psycopg.connect(APP_DATABASE_URL)
+            try:
+                from app_sync import sync_generation_batches
+                sync_generation_batches(app_conn, observer_conn)
+            finally:
+                app_conn.close()
+        except Exception:
+            logger.exception("Generation batch enrichment failed")
+            observer_conn.rollback()
 
     finally:
         observer_conn.close()

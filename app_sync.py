@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
 
@@ -154,3 +155,56 @@ def sync_app_data(app_conn: psycopg.Connection, observer_conn: psycopg.Connectio
     sync_chats(app_conn, observer_conn)
     sync_messages(app_conn, observer_conn)
     sync_message_parts(app_conn, observer_conn)
+
+
+def sync_generation_batches(app_conn: psycopg.Connection, observer_conn: psycopg.Connection) -> int:
+    """Enrich column_generation_workflows with metadata from app DB."""
+    last_sync = get_last_sync(observer_conn, "generation_batches") or EPOCH
+
+    with app_conn.cursor() as cur:
+        cur.execute(
+            'SELECT gb.id, gb."columnId", gb.prompt, gb.variant, gb."variantOptions", '
+            'gb.rows, gb."totalRows", gb."completedRows", gb."failedRows", '
+            'gb.status, gb."userId", gb."createdAt", gb."updatedAt", '
+            'r.name as "columnName" '
+            'FROM "GenerationBatch" gb '
+            'LEFT JOIN "Resource" r ON r.id = gb."columnId" '
+            'WHERE gb."updatedAt" > %s ORDER BY gb."updatedAt"',
+            (last_sync,),
+        )
+        rows = cur.fetchall()
+
+    updated = 0
+    for row in rows:
+        batch_id = str(row[0])
+        user_id = str(row[10]) if row[10] else None
+        metadata = {
+            "id": str(row[0]),
+            "columnId": str(row[1]) if row[1] else None,
+            "columnName": row[13],
+            "prompt": row[2],
+            "variant": row[3],
+            "variantOptions": row[4],
+            "rows": row[5],
+            "totalRows": row[6],
+            "completedRows": row[7],
+            "failedRows": row[8],
+            "status": row[9],
+            "userId": user_id,
+            "createdAt": row[11].isoformat() if row[11] else None,
+            "updatedAt": row[12].isoformat() if row[12] else None,
+        }
+
+        with observer_conn.cursor() as cur:
+            cur.execute(
+                "UPDATE column_generation_workflows SET user_id = %s, metadata = %s WHERE batch_id = %s::uuid",
+                (user_id, json.dumps(metadata), batch_id),
+            )
+            if cur.rowcount > 0:
+                updated += 1
+        observer_conn.commit()
+
+    now = datetime.now(timezone.utc)
+    update_last_sync(observer_conn, "generation_batches", now)
+    logger.info("Enriched %d generation batches (since %s)", updated, last_sync)
+    return updated

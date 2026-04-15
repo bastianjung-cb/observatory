@@ -1,4 +1,4 @@
-import { getDailyCosts, getUserCosts, getCostSummary } from "@/lib/queries/dashboard";
+import { getDailyCosts, getUserCosts, getCostSummary, getColGenSummary, getDailyColumnCreationVolume, getDailyColumnCreationCosts, getUserColumnCreationStats } from "@/lib/queries/dashboard";
 import { DashboardCharts } from "./charts";
 import { DateRangePicker } from "./date-range-picker";
 import { KeyboardHints } from "@/components/keyboard-hints";
@@ -53,12 +53,16 @@ export default async function DashboardPage({
   const from = params.from || defaultFrom();
   const to = params.to || defaultTo();
 
-  let dailyCosts, userCosts, summary;
+  let dailyCosts, userCosts, summary, colGenSummary, colVolume, colCosts, colUserStats;
   try {
-    [dailyCosts, userCosts, summary] = await Promise.all([
+    [dailyCosts, userCosts, summary, colGenSummary, colVolume, colCosts, colUserStats] = await Promise.all([
       getDailyCosts(from, to),
       getUserCosts(from, to, 20),
       getCostSummary(from, to),
+      getColGenSummary(from, to),
+      getDailyColumnCreationVolume(from, to),
+      getDailyColumnCreationCosts(from, to),
+      getUserColumnCreationStats(from, to, 20),
     ]);
   } catch {
     return (
@@ -93,27 +97,48 @@ export default async function DashboardPage({
 
       <div className="flex-1 overflow-auto px-6 py-6">
         {/* Summary Cards */}
-        <div className="grid grid-cols-4 gap-4 mb-8">
-          <div className="rounded-xl border bg-card p-5">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Total Cost</p>
-            <p className="text-3xl font-bold font-mono text-[#6B2C91] dark:text-white">{formatCost(summary.total_cost)}</p>
-          </div>
-          <div className="rounded-xl border bg-card p-5">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Total Tokens</p>
-            <p className="text-3xl font-bold font-mono">{formatTokens(summary.total_tokens)}</p>
-          </div>
+        <div className="grid grid-cols-7 gap-4 mb-8">
+          
+          
           <div className="rounded-xl border bg-card p-5">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">LLM Calls</p>
-            <p className="text-3xl font-bold font-mono">{summary.total_llm_calls.toLocaleString()}</p>
+            <p className="text-3xl font-bold font-mono">{(summary.total_llm_calls + colGenSummary.total_llm_calls).toLocaleString()}</p>
           </div>
           <div className="rounded-xl border bg-card p-5">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Chats</p>
             <p className="text-3xl font-bold font-mono">{summary.total_chats.toLocaleString()}</p>
           </div>
+
+          <div className="rounded-xl border bg-card p-5">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Total Cost</p>
+            <p className="text-3xl font-bold font-mono text-[#6B2C91] dark:text-white">{formatCost(summary.total_cost + colGenSummary.total_cost)}</p>
+          </div>
+          <div className="rounded-xl border bg-card p-5">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Chat Cost</p>
+            <p className="text-3xl font-bold font-mono">{formatCost(summary.total_cost)}</p>
+          </div>
+          <div className="rounded-xl border bg-card p-5">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Col Creation Cost</p>
+            <p className="text-3xl font-bold font-mono">{formatCost(colGenSummary.total_cost)}</p>
+            </div>
+          <div className="rounded-xl border bg-card p-5">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Columns Generated</p>
+            <p className="text-3xl font-bold font-mono">{colGenSummary.total_columns.toLocaleString()}</p>
+          </div>
+          <div className="rounded-xl border bg-card p-5">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Cells Generated</p>
+            <p className="text-3xl font-bold font-mono">{colGenSummary.total_cells.toLocaleString()}</p>
+          </div>
         </div>
 
         {/* Charts */}
-        <DashboardCharts dailyCosts={dailyCosts} userCosts={userCosts} />
+        <DashboardCharts
+          dailyCosts={dailyCosts}
+          userCosts={userCosts}
+          columnCreationVolume={colVolume}
+          columnCreationCosts={colCosts}
+          columnCreationUserStats={colUserStats}
+        />
       </div>
     </div>
   );

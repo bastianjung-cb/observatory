@@ -15,6 +15,11 @@ export interface ChildWorkflowRow {
   status: string;
   start_time: string;
   end_time: string | null;
+  cost_usd?: number | null;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  output_value?: string | null;
+  input_label?: string | null;
 }
 
 export interface BreadcrumbItem {
@@ -85,9 +90,10 @@ export async function getWorkflowForMessage(
   messageId: string
 ): Promise<WorkflowRow | null> {
   const result = await pool.query(
-    `SELECT workflow_id, status, start_time, end_time, parent_workflow_id, workflow_name
-     FROM workflows
-     WHERE message_id = $1
+    `SELECT w.workflow_id, w.status, w.start_time, w.end_time, w.parent_workflow_id, w.workflow_name
+     FROM chat_workflows cw
+     JOIN workflows w ON w.workflow_id = cw.workflow_id
+     WHERE cw.message_id = $1
      LIMIT 1`,
     [messageId]
   );
@@ -114,6 +120,58 @@ export async function getChildWorkflows(
      FROM workflows
      WHERE parent_workflow_id = $1
      ORDER BY start_time ASC`,
+    [parentWorkflowId]
+  );
+  return result.rows;
+}
+
+export async function getChildWorkflowsWithDetails(
+  parentWorkflowId: string
+): Promise<ChildWorkflowRow[]> {
+  const result = await pool.query(
+    `SELECT
+       w.workflow_id,
+       w.workflow_name,
+       w.status,
+       w.start_time,
+       w.end_time,
+       (
+         SELECT COALESCE(SUM(
+           CASE WHEN mp.id IS NOT NULL THEN
+             (
+               COALESCE((a.output->'usage'->'inputTokens'->>'noCache')::numeric, 0) * mp.input_price
+               + COALESCE((a.output->'usage'->'inputTokens'->>'cacheRead')::numeric, 0) * COALESCE(mp.cache_read_price, mp.input_price)
+               + COALESCE((a.output->'usage'->'outputTokens'->>'text')::numeric, 0) * mp.output_price
+               + COALESCE((a.output->'usage'->'outputTokens'->>'reasoning')::numeric, 0) * COALESCE(mp.reasoning_price, mp.output_price)
+             ) / 1000000.0
+           ELSE 0 END
+         ), 0)
+         FROM activities a
+         LEFT JOIN model_pricing mp ON mp.model_id = a.input->>'modelId'
+         WHERE a.workflow_id = w.workflow_id AND a.activity_type = 'invokeModel'
+       )::float as cost_usd,
+       (
+         SELECT COALESCE(SUM((a.output->'usage'->'inputTokens'->>'total')::int), 0)
+         FROM activities a
+         WHERE a.workflow_id = w.workflow_id AND a.activity_type = 'invokeModel'
+       )::int as input_tokens,
+       (
+         SELECT COALESCE(SUM((a.output->'usage'->'outputTokens'->>'total')::int), 0)
+         FROM activities a
+         WHERE a.workflow_id = w.workflow_id AND a.activity_type = 'invokeModel'
+       )::int as output_tokens,
+       (
+         SELECT a.input->>'value'
+         FROM activities a
+         WHERE a.workflow_id = w.workflow_id AND a.activity_type = 'writeRowValue'
+         LIMIT 1
+       ) as output_value,
+       (
+         SELECT w.input->'rowKey'->>0
+       ) as input_label
+     FROM workflows w
+     WHERE w.parent_workflow_id = $1
+     ORDER BY w.start_time ASC`,
     [parentWorkflowId]
   );
   return result.rows;
@@ -228,10 +286,11 @@ export async function getMessageCost(
            ) / 1000000.0
          ELSE 0 END
        ), 0) as total_cost_usd
-     FROM workflows w
+     FROM chat_workflows cw
+     JOIN workflows w ON w.workflow_id = cw.workflow_id
      JOIN activities a ON a.workflow_id = w.workflow_id AND a.activity_type = 'invokeModel'
      LEFT JOIN model_pricing mp ON mp.model_id = a.input->>'modelId'
-     WHERE w.message_id = $1`,
+     WHERE cw.message_id = $1`,
     [messageId]
   );
   return result.rows[0];
