@@ -19,26 +19,28 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # 1. Create chat_workflows table
+    # 1. Create chat_workflows table (IF NOT EXISTS for idempotency — init_schema may have created it)
     op.execute("""
-    CREATE TABLE chat_workflows (
+    CREATE TABLE IF NOT EXISTS chat_workflows (
         id              SERIAL PRIMARY KEY,
         workflow_id     TEXT UNIQUE NOT NULL REFERENCES workflows(workflow_id),
         message_id      UUID
     );
     """)
 
-    # 2. Populate from existing data
+    # 2. Populate from existing data (only rows not already migrated)
     op.execute("""
     INSERT INTO chat_workflows (workflow_id, message_id)
     SELECT workflow_id, message_id
     FROM workflows
-    WHERE message_id IS NOT NULL;
+    WHERE message_id IS NOT NULL
+      AND workflow_id NOT IN (SELECT workflow_id FROM chat_workflows)
+    ON CONFLICT (workflow_id) DO NOTHING;
     """)
 
     # 3. Create column_generation_workflows table
     op.execute("""
-    CREATE TABLE column_generation_workflows (
+    CREATE TABLE IF NOT EXISTS column_generation_workflows (
         id              SERIAL PRIMARY KEY,
         workflow_id     TEXT UNIQUE NOT NULL REFERENCES workflows(workflow_id),
         batch_id        UUID NOT NULL,
@@ -47,14 +49,14 @@ def upgrade() -> None:
     );
     """)
 
-    # 4. Drop message_id from workflows
+    # 4. Drop message_id from workflows (IF EXISTS for idempotency)
     op.execute("DROP INDEX IF EXISTS idx_workflows_message_id;")
-    op.execute("ALTER TABLE workflows DROP COLUMN message_id;")
+    op.execute("ALTER TABLE workflows DROP COLUMN IF EXISTS message_id;")
 
     # 5. Create indexes
-    op.execute("CREATE INDEX idx_chat_workflows_message_id ON chat_workflows(message_id);")
-    op.execute("CREATE INDEX idx_column_generation_workflows_batch_id ON column_generation_workflows(batch_id);")
-    op.execute("CREATE INDEX idx_column_generation_workflows_user_id ON column_generation_workflows(user_id);")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_chat_workflows_message_id ON chat_workflows(message_id);")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_column_generation_workflows_batch_id ON column_generation_workflows(batch_id);")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_column_generation_workflows_user_id ON column_generation_workflows(user_id);")
 
 
 def downgrade() -> None:
