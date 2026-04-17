@@ -108,6 +108,13 @@ export function DashboardCharts({
   const peakCostIndex = dailyData.length > 0 ? dailyData.reduce((maxI, d, i, arr) => d.total_cost > arr[maxI].total_cost ? i : maxI, 0) : -1;
   const peakTokenIndex = dailyData.length > 0 ? dailyData.reduce((maxI, d, i, arr) => d.total_tokens > arr[maxI].total_tokens ? i : maxI, 0) : -1;
 
+  const columnVolumeData = columnCreationVolume.map((d) => ({ ...d, label: formatDayLabel(d.day) }));
+  const columnCostData = columnCreationCosts.map((d) => ({ ...d, label: formatDayLabel(d.day) }));
+
+  const peakColumnsIndex = columnVolumeData.length > 0 ? columnVolumeData.reduce((maxI, d, i, arr) => d.columns_created > arr[maxI].columns_created ? i : maxI, 0) : -1;
+  const peakCellsIndex = columnVolumeData.length > 0 ? columnVolumeData.reduce((maxI, d, i, arr) => d.rows_generated > arr[maxI].rows_generated ? i : maxI, 0) : -1;
+  const peakColCostIndex = columnCostData.length > 0 ? columnCostData.reduce((maxI, d, i, arr) => d.total_cost > arr[maxI].total_cost ? i : maxI, 0) : -1;
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const costPeakLabel = (props: any) => {
     const { x, y, index, value } = props;
@@ -121,6 +128,30 @@ export function DashboardCharts({
     const { x, y, index, value } = props;
     return index === peakTokenIndex ? (
       <text x={x} y={y - 14} textAnchor="middle" fontSize={12} fontWeight={700} fill={PURPLE_DARK} className="dark:fill-[#E8D5F2]">{formatTokensShort(value)}</text>
+    ) : null;
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const columnsPeakLabel = (props: any) => {
+    const { x, y, index, value } = props;
+    return index === peakColumnsIndex ? (
+      <text x={x} y={y - 14} textAnchor="middle" fontSize={12} fontWeight={700} fill={PURPLE_DARK} className="dark:fill-[#E8D5F2]">{Number(value).toLocaleString()}</text>
+    ) : null;
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cellsPeakLabel = (props: any) => {
+    const { x, y, index, value } = props;
+    return index === peakCellsIndex ? (
+      <text x={x} y={y - 14} textAnchor="middle" fontSize={12} fontWeight={700} fill="#B0A898" className="dark:fill-[#E8E0D0]">{formatTokensShort(value)}</text>
+    ) : null;
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const colCostPeakLabel = (props: any) => {
+    const { x, y, index, value } = props;
+    return index === peakColCostIndex ? (
+      <text x={x} y={y - 14} textAnchor="middle" fontSize={12} fontWeight={700} fill={PURPLE_DARK} className="dark:fill-[#E8D5F2]">{formatCostShort(value)}</text>
     ) : null;
   };
 
@@ -304,65 +335,111 @@ export function DashboardCharts({
         )}
       </div>
 
-      {/* Column Creation Volume */}
+      {/* Column Creation Volume & Cost */}
       <div className="rounded-xl border bg-card p-6">
         <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-6">
-          Column Creation Volume
+          Column Creation Volume &amp; Cost
         </h3>
-        {columnCreationVolume.length === 0 ? (
+        {columnVolumeData.length === 0 && columnCostData.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-12">No column creation data for this period</p>
         ) : (
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={columnCreationVolume.map((d) => ({ ...d, label: formatDayLabel(d.day) }))}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis
-                dataKey="label"
-                tick={{ fontSize: 10 }}
-                stroke="var(--muted-foreground)"
-                interval={Math.max(Math.floor(columnCreationVolume.length / 8) - 1, 0)}
-              />
-              <YAxis
-                yAxisId="left"
-                tick={{ fontSize: 10 }}
-                stroke="var(--muted-foreground)"
-                width={50}
-                label={{ value: "Columns", angle: -90, position: "insideLeft", style: { fontSize: 10, fill: "var(--muted-foreground)" } }}
-              />
-              <YAxis
-                yAxisId="right"
-                orientation="right"
-                tick={{ fontSize: 10 }}
-                stroke="var(--muted-foreground)"
-                width={60}
-                label={{ value: "Cells", angle: 90, position: "insideRight", style: { fontSize: 10, fill: "var(--muted-foreground)" } }}
-              />
-              <Tooltip
-                contentStyle={tooltipStyle}
-                labelFormatter={(label) => String(label)}
-              />
-              <Legend />
-              <Line
-                yAxisId="left"
-                type="monotone"
-                dataKey="columns_created"
-                name="Columns Created"
-                stroke={PURPLE}
-                strokeWidth={2}
-                dot={{ fill: PURPLE, r: 4, strokeWidth: 0 }}
-                activeDot={{ fill: PURPLE_DARK, r: 6, strokeWidth: 0 }}
-              />
-              <Line
-                yAxisId="right"
-                type="monotone"
-                dataKey="rows_generated"
-                name="Cells Generated"
-                stroke="#E8E0D0"
-                strokeWidth={2}
-                dot={{ fill: "#E8E0D0", r: 4, strokeWidth: 0 }}
-                activeDot={{ fill: "#F5F0E8", r: 6, strokeWidth: 0 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          <div className="grid grid-cols-2 gap-8">
+            {/* Volume: columns + cells */}
+            <div>
+              <p className="text-xs text-muted-foreground mb-3 font-medium">Columns &amp; Cells</p>
+              <ResponsiveContainer width="100%" height={240}>
+                <LineChart data={columnVolumeData} margin={{ top: 20, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fontSize: 10 }}
+                    stroke="var(--muted-foreground)"
+                    interval={Math.max(Math.floor(columnVolumeData.length / 8) - 1, 0)}
+                  />
+                  <YAxis
+                    yAxisId="left"
+                    tick={{ fontSize: 10 }}
+                    stroke="var(--muted-foreground)"
+                    width={40}
+                    allowDecimals={false}
+                  />
+                  <YAxis
+                    yAxisId="right"
+                    orientation="right"
+                    tick={{ fontSize: 10 }}
+                    stroke="var(--muted-foreground)"
+                    width={44}
+                    tickFormatter={formatTokensShort}
+                  />
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    labelFormatter={(label) => String(label)}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Line
+                    yAxisId="left"
+                    type="monotone"
+                    dataKey="columns_created"
+                    name="Columns"
+                    stroke={PURPLE}
+                    strokeWidth={2}
+                    dot={{ fill: PURPLE, r: 4, strokeWidth: 0 }}
+                    activeDot={{ fill: PURPLE_DARK, r: 6, strokeWidth: 0 }}
+                    label={columnsPeakLabel}
+                  />
+                  <Line
+                    yAxisId="right"
+                    type="monotone"
+                    dataKey="rows_generated"
+                    name="Cells"
+                    stroke="#E8E0D0"
+                    strokeWidth={2}
+                    dot={{ fill: "#E8E0D0", r: 4, strokeWidth: 0 }}
+                    activeDot={{ fill: "#F5F0E8", r: 6, strokeWidth: 0 }}
+                    label={cellsPeakLabel}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Cost */}
+            <div>
+              <p className="text-xs text-muted-foreground mb-3 font-medium">Cost ($)</p>
+              <ResponsiveContainer width="100%" height={240}>
+                <AreaChart data={columnCostData} margin={{ top: 20, right: 8, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colCostGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor={PURPLE} stopOpacity={0.3} />
+                      <stop offset="100%" stopColor={PURPLE} stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis
+                    dataKey="label"
+                    tick={{ fontSize: 10 }}
+                    stroke="var(--muted-foreground)"
+                    interval={Math.max(Math.floor(columnCostData.length / 8) - 1, 0)}
+                  />
+                  <YAxis tickFormatter={formatCostShort} tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" width={50} />
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    formatter={(value) => [`$${Number(value).toFixed(4)}`, "Cost"]}
+                    labelFormatter={(label) => String(label)}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="total_cost"
+                    stroke={PURPLE}
+                    strokeWidth={2}
+                    fill="url(#colCostGradient)"
+                    dot={{ fill: PURPLE, r: 4, strokeWidth: 0 }}
+                    activeDot={{ fill: PURPLE_DARK, r: 6, strokeWidth: 0 }}
+                    label={colCostPeakLabel}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
         )}
       </div>
 
@@ -445,48 +522,6 @@ export function DashboardCharts({
         )}
       </div>
 
-      {/* Column Creation Cost */}
-      <div className="rounded-xl border bg-card p-6">
-        <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-6">
-          Column Creation Cost
-        </h3>
-        {columnCreationCosts.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-12">No column creation data for this period</p>
-        ) : (
-          <ResponsiveContainer width="100%" height={300}>
-            <AreaChart data={columnCreationCosts.map((d) => ({ ...d, label: formatDayLabel(d.day) }))}>
-              <defs>
-                <linearGradient id="colCostGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={PURPLE} stopOpacity={0.3} />
-                  <stop offset="100%" stopColor={PURPLE} stopOpacity={0.02} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis
-                dataKey="label"
-                tick={{ fontSize: 10 }}
-                stroke="var(--muted-foreground)"
-                interval={Math.max(Math.floor(columnCreationCosts.length / 8) - 1, 0)}
-              />
-              <YAxis tickFormatter={formatCostShort} tick={{ fontSize: 10 }} stroke="var(--muted-foreground)" width={50} />
-              <Tooltip
-                contentStyle={tooltipStyle}
-                formatter={(value) => [`$${Number(value).toFixed(4)}`, "Cost"]}
-                labelFormatter={(label) => String(label)}
-              />
-              <Area
-                type="monotone"
-                dataKey="total_cost"
-                stroke={PURPLE}
-                strokeWidth={2}
-                fill="url(#colCostGradient)"
-                dot={{ fill: PURPLE, r: 4, strokeWidth: 0 }}
-                activeDot={{ fill: PURPLE_DARK, r: 6, strokeWidth: 0 }}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        )}
-      </div>
     </div>
   );
 }
