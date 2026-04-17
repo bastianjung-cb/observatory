@@ -84,7 +84,7 @@ export function ChatTable({
       params.set("dir", key === "messages" || key === "cost" || key === "cost_per_msg" ? "desc" : "asc");
     }
     params.delete("page");
-    router.push(`/?${params.toString()}`);
+    router.push(`/chats?${params.toString()}`);
   }
 
   // Client-side column filters (within the server-sorted page)
@@ -143,7 +143,7 @@ export function ChatTable({
       params.delete("q");
     }
     params.delete("page");
-    router.push(`/?${params.toString()}`);
+    router.push(`/chats?${params.toString()}`);
   }
 
   const totalPages = Math.ceil(total / pageSize);
@@ -264,7 +264,7 @@ export function ChatTable({
             onClick={() => {
               const params = new URLSearchParams(searchParams.toString());
               params.set("page", String(page - 1));
-              router.push(`/?${params.toString()}`);
+              router.push(`/chats?${params.toString()}`);
             }}
           >
             Previous
@@ -278,7 +278,7 @@ export function ChatTable({
             onClick={() => {
               const params = new URLSearchParams(searchParams.toString());
               params.set("page", String(page + 1));
-              router.push(`/?${params.toString()}`);
+              router.push(`/chats?${params.toString()}`);
             }}
           >
             Next
