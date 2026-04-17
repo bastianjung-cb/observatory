@@ -9,10 +9,21 @@ const VALID_SORT_DIRS = new Set(["asc", "desc"]);
 export default async function ColumnCreationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; page?: string; sort?: string; dir?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    fc?: string;
+    fu?: string;
+    fs?: string;
+    page?: string;
+    sort?: string;
+    dir?: string;
+  }>;
 }) {
   const params = await searchParams;
   const search = params.q || "";
+  const columnFilter = params.fc || "";
+  const userFilter = params.fu || "";
+  const statusFilter = params.fs || "";
   const page = parseInt(params.page || "1", 10);
   const pageSize = 20;
   const sortKey = (VALID_SORT_KEYS.has(params.sort || "") ? params.sort : "date") as SortKey;
@@ -20,7 +31,13 @@ export default async function ColumnCreationsPage({
 
   let rows, total;
   try {
-    const result = await getColumnCreations(search, page, pageSize, sortKey, sortDir);
+    const result = await getColumnCreations(
+      { search, columnFilter, userFilter, statusFilter },
+      page,
+      pageSize,
+      sortKey,
+      sortDir
+    );
     rows = result.rows;
     total = result.total;
   } catch (err) {
@@ -52,6 +69,9 @@ export default async function ColumnCreationsPage({
         <ColumnCreationTable
           rows={rows}
           search={search}
+          columnFilter={columnFilter}
+          userFilter={userFilter}
+          statusFilter={statusFilter}
           total={total}
           page={page}
           pageSize={pageSize}

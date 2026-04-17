@@ -9,10 +9,22 @@ const VALID_SORT_DIRS = new Set(["asc", "desc"]);
 export default async function ChatsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; page?: string; sort?: string; dir?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    fu?: string;
+    ft?: string;
+    fm?: string;
+    page?: string;
+    sort?: string;
+    dir?: string;
+  }>;
 }) {
   const params = await searchParams;
   const search = params.q || "";
+  const userFilter = params.fu || "";
+  const titleFilter = params.ft || "";
+  const minMessagesParsed = parseInt(params.fm || "", 10);
+  const minMessages = Number.isFinite(minMessagesParsed) && minMessagesParsed > 0 ? minMessagesParsed : undefined;
   const page = parseInt(params.page || "1", 10);
   const pageSize = 20;
   const sortKey = (VALID_SORT_KEYS.has(params.sort || "") ? params.sort : "last_message") as SortKey;
@@ -20,7 +32,13 @@ export default async function ChatsPage({
 
   let chats, total;
   try {
-    const result = await getChats(search, page, pageSize, sortKey, sortDir);
+    const result = await getChats(
+      { search, userFilter, titleFilter, minMessages },
+      page,
+      pageSize,
+      sortKey,
+      sortDir
+    );
     chats = result.chats;
     total = result.total;
   } catch (err) {
@@ -54,6 +72,9 @@ export default async function ChatsPage({
         <ChatTable
           chats={chats}
           search={search}
+          userFilter={userFilter}
+          titleFilter={titleFilter}
+          minMessages={minMessages ?? null}
           total={total}
           page={page}
           pageSize={pageSize}

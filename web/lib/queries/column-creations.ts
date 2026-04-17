@@ -50,6 +50,13 @@ const SORT_COLUMNS: Record<SortKey, string> = {
   date: "created_at",
 };
 
+export interface ColumnCreationFilters {
+  search?: string;
+  columnFilter?: string;
+  userFilter?: string;
+  statusFilter?: string;
+}
+
 export const getColumnCreations = unstable_cache(
   _getColumnCreations,
   ["column-creations:list"],
@@ -57,13 +64,14 @@ export const getColumnCreations = unstable_cache(
 );
 
 async function _getColumnCreations(
-  search?: string,
+  filters: ColumnCreationFilters = {},
   page = 1,
   pageSize = 20,
   sortKey: SortKey = "date",
   sortDir: SortDir = "desc"
 ): Promise<{ rows: ColumnCreationRow[]; total: number }> {
   const offset = (page - 1) * pageSize;
+  const { search, columnFilter, userFilter, statusFilter } = filters;
 
   let whereClause = "WHERE 1=1";
   const params: (string | number)[] = [];
@@ -80,6 +88,24 @@ async function _getColumnCreations(
     paramIndex += 1;
   }
 
+  if (columnFilter && columnFilter.trim()) {
+    whereClause += ` AND cgw.metadata->>'columnName' ILIKE $${paramIndex}`;
+    params.push(`%${columnFilter.trim()}%`);
+    paramIndex += 1;
+  }
+
+  if (userFilter && userFilter.trim()) {
+    whereClause += ` AND COALESCE(u.given_name || ' ' || u.family_name, u.email, '') ILIKE $${paramIndex}`;
+    params.push(`%${userFilter.trim()}%`);
+    paramIndex += 1;
+  }
+
+  if (statusFilter && statusFilter.trim()) {
+    whereClause += ` AND w.status ILIKE $${paramIndex}`;
+    params.push(`%${statusFilter.trim()}%`);
+    paramIndex += 1;
+  }
+
   const countQuery = `
     SELECT COUNT(*) as total
     FROM column_generation_workflows cgw
@@ -87,10 +113,7 @@ async function _getColumnCreations(
     LEFT JOIN users u ON u.id = cgw.user_id
     ${whereClause}
   `;
-  const countResult = await pool.query(countQuery, params);
-  const total = parseInt(countResult.rows[0].total, 10);
 
-  // Validate sort to prevent injection
   const orderCol = SORT_COLUMNS[sortKey] || "created_at";
   const orderDir = sortDir === "asc" ? "ASC" : "DESC";
   const nullsHandling = sortDir === "desc" ? "NULLS LAST" : "NULLS FIRST";
@@ -137,10 +160,14 @@ async function _getColumnCreations(
      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
   `;
 
-  const result = await pool.query(dataQuery, [...params, pageSize, offset]);
+  const [countResult, dataResult] = await Promise.all([
+    pool.query(countQuery, params),
+    pool.query(dataQuery, [...params, pageSize, offset]),
+  ]);
+  const total = parseInt(countResult.rows[0].total, 10);
 
   return {
-    rows: result.rows,
+    rows: dataResult.rows,
     total,
   };
 }

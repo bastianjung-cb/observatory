@@ -13,6 +13,13 @@ export interface ChatRow {
 export type SortKey = "user" | "title" | "messages" | "cost" | "cost_per_msg" | "last_message";
 export type SortDir = "asc" | "desc";
 
+export interface ChatQueryFilters {
+  search?: string;
+  userFilter?: string;
+  titleFilter?: string;
+  minMessages?: number;
+}
+
 const SORT_COLUMNS: Record<SortKey, string> = {
   user: "user_name",
   title: "title",
@@ -40,15 +47,17 @@ const COST_SUBQUERY_SQL = `
 `;
 
 export async function getChats(
-  search?: string,
+  filters: ChatQueryFilters = {},
   page = 1,
   pageSize = 20,
   sortKey: SortKey = "last_message",
   sortDir: SortDir = "desc"
 ): Promise<{ chats: ChatRow[]; total: number }> {
   const offset = (page - 1) * pageSize;
+  const { search, userFilter, titleFilter, minMessages } = filters;
 
-  let whereClause = 'WHERE c.deleted_at IS NULL';
+  let whereClause = "WHERE c.deleted_at IS NULL";
+  let havingClause = "";
   const params: (string | number)[] = [];
   let paramIndex = 1;
 
@@ -70,22 +79,54 @@ export async function getChats(
     paramIndex += 2;
   }
 
-  const countQuery = `
-    SELECT COUNT(*) as total
+  if (userFilter && userFilter.trim()) {
+    whereClause += ` AND (
+      u.given_name ILIKE $${paramIndex}
+      OR u.family_name ILIKE $${paramIndex}
+      OR u.email ILIKE $${paramIndex}
+    )`;
+    params.push(`%${userFilter.trim()}%`);
+    paramIndex += 1;
+  }
+
+  if (titleFilter && titleFilter.trim()) {
+    whereClause += ` AND c.title ILIKE $${paramIndex}`;
+    params.push(`%${titleFilter.trim()}%`);
+    paramIndex += 1;
+  }
+
+  if (typeof minMessages === "number" && minMessages > 0) {
+    havingClause = `HAVING COUNT(m.id) >= $${paramIndex}`;
+    params.push(minMessages);
+    paramIndex += 1;
+  }
+
+  // Count needs to account for HAVING (message-count filter), so wrap the
+  // grouped query.
+  const countQuery = havingClause
+    ? `
+    SELECT COUNT(*)::int as total FROM (
+      SELECT c.id
+      FROM chats c
+      JOIN users u ON u.id = c.user_id
+      LEFT JOIN messages m ON m.chat_id = c.id
+      ${whereClause}
+      GROUP BY c.id
+      ${havingClause}
+    ) sub
+  `
+    : `
+    SELECT COUNT(*)::int as total
     FROM chats c
     JOIN users u ON u.id = c.user_id
     ${whereClause}
   `;
 
-  // Validate sort to prevent injection
   const orderCol = SORT_COLUMNS[sortKey] || "last_message_at";
   const orderDir = sortDir === "asc" ? "ASC" : "DESC";
   const nullsHandling = sortDir === "desc" ? "NULLS LAST" : "NULLS FIRST";
   const sortNeedsCost = sortKey === "cost" || sortKey === "cost_per_msg";
 
-  // Two-pass when sort doesn't need cost: rank+limit on cheap columns first,
-  // then compute cost only for the visible page. Falls back to one-pass when
-  // sorting by cost since that genuinely needs cost per chat up front.
   const dataQuery = sortNeedsCost
     ? `
     SELECT
@@ -103,6 +144,7 @@ export async function getChats(
     LEFT JOIN LATERAL (${COST_SUBQUERY_SQL} WHERE m2.chat_id = c.id) cost ON true
     ${whereClause}
     GROUP BY c.id, c.title, u.given_name, u.family_name, u.email
+    ${havingClause}
     ORDER BY ${orderCol} ${orderDir} ${nullsHandling}
     LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
   `
@@ -121,6 +163,7 @@ export async function getChats(
       LEFT JOIN messages m ON m.chat_id = c.id
       ${whereClause}
       GROUP BY c.id, c.title, c.user_id, u.given_name, u.family_name, u.email
+      ${havingClause}
       ORDER BY ${orderCol} ${orderDir} ${nullsHandling}
       LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
     )
@@ -142,10 +185,9 @@ export async function getChats(
     pool.query(countQuery, params),
     pool.query(dataQuery, [...params, pageSize, offset]),
   ]);
-  const total = parseInt(countResult.rows[0].total, 10);
 
   return {
     chats: dataResult.rows,
-    total,
+    total: Number(countResult.rows[0].total),
   };
 }

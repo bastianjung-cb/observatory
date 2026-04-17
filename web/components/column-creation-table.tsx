@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useRef, useEffect, useMemo, useState } from "react";
+import { useRef, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { useKeyboardNav } from "@/components/use-keyboard-nav";
 
@@ -76,6 +76,9 @@ const COL_GRID = "grid grid-cols-[160px_240px_1fr_80px_100px_90px_80px_80px_120p
 export function ColumnCreationTable({
   rows,
   search,
+  columnFilter,
+  userFilter,
+  statusFilter,
   total,
   page,
   pageSize,
@@ -84,6 +87,9 @@ export function ColumnCreationTable({
 }: {
   rows: ColumnCreation[];
   search: string;
+  columnFilter: string;
+  userFilter: string;
+  statusFilter: string;
   total: number;
   page: number;
   pageSize: number;
@@ -92,11 +98,8 @@ export function ColumnCreationTable({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const [columnFilter, setColumnFilter] = useState("");
-  const [userFilter, setUserFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const filterDebounceRefs = useRef<Record<string, ReturnType<typeof setTimeout> | null>>({});
 
   function toggleSort(key: SortKey) {
     const params = new URLSearchParams(searchParams.toString());
@@ -110,36 +113,12 @@ export function ColumnCreationTable({
     router.push(`/column-creations?${params.toString()}`);
   }
 
-  // Client-side column filters (within the server-sorted page)
-  const filteredRows = useMemo(() => {
-    let result = rows;
-    if (columnFilter) {
-      const f = columnFilter.toLowerCase();
-      result = result.filter((r) =>
-        (r.column_name || "Unnamed").toLowerCase().includes(f)
-      );
-    }
-    if (userFilter) {
-      const f = userFilter.toLowerCase();
-      result = result.filter(
-        (r) =>
-          (r.user_name?.toLowerCase().includes(f) ?? false) ||
-          (r.user_email?.toLowerCase().includes(f) ?? false)
-      );
-    }
-    if (statusFilter) {
-      const f = statusFilter.toUpperCase();
-      result = result.filter((r) => r.status.includes(f));
-    }
-    return result;
-  }, [rows, columnFilter, userFilter, statusFilter]);
-
   const { selectedIndex } = useKeyboardNav({
-    itemCount: filteredRows.length,
+    itemCount: rows.length,
     storageKey: "column-creations",
     onEnter: (index) => {
-      if (filteredRows[index]) {
-        router.push(`/column-creations/${filteredRows[index].batch_id}`);
+      if (rows[index]) {
+        router.push(`/column-creations/${rows[index].batch_id}`);
       }
     },
   });
@@ -149,26 +128,35 @@ export function ColumnCreationTable({
     const container = selectedRowRef.current?.closest("[class*='overflow-auto']");
     if (selectedIndex === 0) {
       container?.scrollTo(0, 0);
-    } else if (selectedIndex === filteredRows.length - 1) {
+    } else if (selectedIndex === rows.length - 1) {
       container?.scrollTo(0, container.scrollHeight);
     } else {
       selectedRowRef.current?.scrollIntoView({ block: "nearest" });
     }
-  }, [selectedIndex, filteredRows.length]);
+  }, [selectedIndex, rows.length]);
 
-  function handleSearch(value: string) {
-    const params = new URLSearchParams(searchParams.toString());
-    if (value) {
-      params.set("q", value);
-    } else {
-      params.delete("q");
-    }
+  function pushParam(field: string, value: string) {
+    const current = typeof window !== "undefined" ? window.location.search : `?${searchParams.toString()}`;
+    const params = new URLSearchParams(current);
+    if (value) params.set(field, value);
+    else params.delete(field);
     params.delete("page");
     router.push(`/column-creations?${params.toString()}`);
   }
 
+  function handleSearch(value: string) {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => pushParam("q", value), 300);
+  }
+
+  function handleFilter(field: string, value: string) {
+    const existing = filterDebounceRefs.current[field];
+    if (existing) clearTimeout(existing);
+    filterDebounceRefs.current[field] = setTimeout(() => pushParam(field, value), 300);
+  }
+
   const totalPages = Math.ceil(total / pageSize);
-  const hasColumnFilters = !!(columnFilter || userFilter || statusFilter);
+  const hasAnyFilter = !!(search || columnFilter || userFilter || statusFilter);
 
   return (
     <div className="flex flex-col -mx-6 -mt-6 -mb-6" style={{ height: "calc(100vh - 90px)" }}>
@@ -179,17 +167,13 @@ export function ColumnCreationTable({
           <Input
             placeholder="Search by column name, prompt, or user..."
             defaultValue={search}
-            onChange={(e) => {
-              if (debounceRef.current) clearTimeout(debounceRef.current);
-              const value = e.target.value;
-              debounceRef.current = setTimeout(() => handleSearch(value), 300);
-            }}
+            key={`q-${search}`}
+            onChange={(e) => handleSearch(e.target.value)}
             className="max-w-sm"
           />
           <span className="text-sm text-muted-foreground">
-            {hasColumnFilters
-              ? `${filteredRows.length} of ${total} column creations`
-              : `${total} column creation${total !== 1 ? "s" : ""}`}
+            {total} column creation{total !== 1 ? "s" : ""}
+            {hasAnyFilter ? " (filtered)" : ""}
           </span>
         </div>
 
@@ -222,14 +206,32 @@ export function ColumnCreationTable({
           </button>
         </div>
 
-        {/* Column filters */}
+        {/* Column filters (server-side; keyed so they reset with URL) */}
         <div className={`${COL_GRID} px-3 py-1.5 border-t bg-muted/30`}>
-          <Input placeholder="Filter user..." value={userFilter} onChange={(e) => setUserFilter(e.target.value)} className="h-7 text-xs" />
-          <Input placeholder="Filter column..." value={columnFilter} onChange={(e) => setColumnFilter(e.target.value)} className="h-7 text-xs" />
+          <Input
+            placeholder="Filter user..."
+            defaultValue={userFilter}
+            key={`fu-${userFilter}`}
+            onChange={(e) => handleFilter("fu", e.target.value)}
+            className="h-7 text-xs"
+          />
+          <Input
+            placeholder="Filter column..."
+            defaultValue={columnFilter}
+            key={`fc-${columnFilter}`}
+            onChange={(e) => handleFilter("fc", e.target.value)}
+            className="h-7 text-xs"
+          />
           <div />
           <div />
           <div />
-          <Input placeholder="Filter..." value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="h-7 text-xs" />
+          <Input
+            placeholder="Filter..."
+            defaultValue={statusFilter}
+            key={`fs-${statusFilter}`}
+            onChange={(e) => handleFilter("fs", e.target.value)}
+            className="h-7 text-xs"
+          />
           <div />
           <div />
           <div />
@@ -238,17 +240,13 @@ export function ColumnCreationTable({
 
       {/* Scrollable rows */}
       <div className="flex-1 overflow-auto px-6">
-        {filteredRows.length === 0 ? (
+        {rows.length === 0 ? (
           <div className="text-center text-muted-foreground py-8">
-            {search
-              ? `No column creations found for "${search}"`
-              : hasColumnFilters
-              ? "No column creations match filters"
-              : "No column creations found"}
+            {hasAnyFilter ? "No column creations match filters" : "No column creations found"}
           </div>
         ) : (
           <div className="py-1">
-            {filteredRows.map((row, index) => (
+            {rows.map((row, index) => (
               <div
                 key={row.batch_id}
                 ref={index === selectedIndex ? selectedRowRef : undefined}

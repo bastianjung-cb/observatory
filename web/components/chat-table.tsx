@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useRef, useEffect, useMemo, useState } from "react";
+import { useRef, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { useKeyboardNav } from "@/components/use-keyboard-nav";
 
@@ -53,6 +53,9 @@ const COL_GRID = "grid grid-cols-[200px_1fr_80px_80px_80px_160px] gap-2 items-ce
 export function ChatTable({
   chats,
   search,
+  userFilter,
+  titleFilter,
+  minMessages,
   total,
   page,
   pageSize,
@@ -61,6 +64,9 @@ export function ChatTable({
 }: {
   chats: Chat[];
   search: string;
+  userFilter: string;
+  titleFilter: string;
+  minMessages: number | null;
   total: number;
   page: number;
   pageSize: number;
@@ -69,11 +75,8 @@ export function ChatTable({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const [userFilter, setUserFilter] = useState("");
-  const [titleFilter, setTitleFilter] = useState("");
-  const [msgFilter, setMsgFilter] = useState("");
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const filterDebounceRefs = useRef<Record<string, ReturnType<typeof setTimeout> | null>>({});
 
   function toggleSort(key: SortKey) {
     const params = new URLSearchParams(searchParams.toString());
@@ -87,38 +90,12 @@ export function ChatTable({
     router.push(`/chats?${params.toString()}`);
   }
 
-  // Client-side column filters (within the server-sorted page)
-  const filteredAndSorted = useMemo(() => {
-    let result = chats;
-    if (userFilter) {
-      const f = userFilter.toLowerCase();
-      result = result.filter(
-        (c) =>
-          c.user_name.toLowerCase().includes(f) ||
-          (c.user_email?.toLowerCase().includes(f) ?? false)
-      );
-    }
-    if (titleFilter) {
-      const f = titleFilter.toLowerCase();
-      result = result.filter((c) =>
-        (c.title || "Untitled").toLowerCase().includes(f)
-      );
-    }
-    if (msgFilter) {
-      const n = parseInt(msgFilter, 10);
-      if (!isNaN(n)) {
-        result = result.filter((c) => c.message_count >= n);
-      }
-    }
-    return result;
-  }, [chats, userFilter, titleFilter, msgFilter]);
-
   const { selectedIndex } = useKeyboardNav({
-    itemCount: filteredAndSorted.length,
+    itemCount: chats.length,
     storageKey: "chats",
     onEnter: (index) => {
-      if (filteredAndSorted[index]) {
-        router.push(`/chats/${filteredAndSorted[index].id}`);
+      if (chats[index]) {
+        router.push(`/chats/${chats[index].id}`);
       }
     },
   });
@@ -128,26 +105,37 @@ export function ChatTable({
     const container = selectedRowRef.current?.closest("[class*='overflow-auto']");
     if (selectedIndex === 0) {
       container?.scrollTo(0, 0);
-    } else if (selectedIndex === filteredAndSorted.length - 1) {
+    } else if (selectedIndex === chats.length - 1) {
       container?.scrollTo(0, container.scrollHeight);
     } else {
       selectedRowRef.current?.scrollIntoView({ block: "nearest" });
     }
-  }, [selectedIndex]);
+  }, [selectedIndex, chats.length]);
 
-  function handleSearch(value: string) {
-    const params = new URLSearchParams(searchParams.toString());
-    if (value) {
-      params.set("q", value);
-    } else {
-      params.delete("q");
-    }
+  // Reads window.location.search so concurrent filter debounces see the
+  // latest URL and don't clobber each other's params.
+  function pushParam(field: string, value: string) {
+    const current = typeof window !== "undefined" ? window.location.search : `?${searchParams.toString()}`;
+    const params = new URLSearchParams(current);
+    if (value) params.set(field, value);
+    else params.delete(field);
     params.delete("page");
     router.push(`/chats?${params.toString()}`);
   }
 
+  function handleSearch(value: string) {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => pushParam("q", value), 300);
+  }
+
+  function handleFilter(field: string, value: string) {
+    const existing = filterDebounceRefs.current[field];
+    if (existing) clearTimeout(existing);
+    filterDebounceRefs.current[field] = setTimeout(() => pushParam(field, value), 300);
+  }
+
   const totalPages = Math.ceil(total / pageSize);
-  const hasColumnFilters = !!(userFilter || titleFilter || msgFilter);
+  const hasAnyFilter = !!(search || userFilter || titleFilter || minMessages);
 
   return (
     <div className="flex flex-col -mx-6 -mt-6 -mb-6" style={{ height: "calc(100vh - 90px)" }}>
@@ -158,17 +146,13 @@ export function ChatTable({
           <Input
             placeholder="Search by user or message content..."
             defaultValue={search}
-            onChange={(e) => {
-              if (debounceRef.current) clearTimeout(debounceRef.current);
-              const value = e.target.value;
-              debounceRef.current = setTimeout(() => handleSearch(value), 300);
-            }}
+            key={`q-${search}`}
+            onChange={(e) => handleSearch(e.target.value)}
             className="max-w-sm"
           />
           <span className="text-sm text-muted-foreground">
-            {hasColumnFilters
-              ? `${filteredAndSorted.length} of ${total} chats`
-              : `${total} chat${total !== 1 ? "s" : ""}`}
+            {total} chat{total !== 1 ? "s" : ""}
+            {hasAnyFilter ? " (filtered)" : ""}
           </span>
         </div>
 
@@ -194,11 +178,29 @@ export function ChatTable({
           </button>
         </div>
 
-        {/* Column filters */}
+        {/* Column filters (server-side; keyed so they reset with URL) */}
         <div className={`${COL_GRID} px-3 py-1.5 border-t bg-muted/30`}>
-          <Input placeholder="Filter user..." value={userFilter} onChange={(e) => setUserFilter(e.target.value)} className="h-7 text-xs" />
-          <Input placeholder="Filter title..." value={titleFilter} onChange={(e) => setTitleFilter(e.target.value)} className="h-7 text-xs" />
-          <Input placeholder="Min" value={msgFilter} onChange={(e) => setMsgFilter(e.target.value)} className="h-7 text-xs text-right" />
+          <Input
+            placeholder="Filter user..."
+            defaultValue={userFilter}
+            key={`fu-${userFilter}`}
+            onChange={(e) => handleFilter("fu", e.target.value)}
+            className="h-7 text-xs"
+          />
+          <Input
+            placeholder="Filter title..."
+            defaultValue={titleFilter}
+            key={`ft-${titleFilter}`}
+            onChange={(e) => handleFilter("ft", e.target.value)}
+            className="h-7 text-xs"
+          />
+          <Input
+            placeholder="Min"
+            defaultValue={minMessages ?? ""}
+            key={`fm-${minMessages ?? ""}`}
+            onChange={(e) => handleFilter("fm", e.target.value)}
+            className="h-7 text-xs text-right"
+          />
           <div />
           <div />
           <div />
@@ -207,17 +209,13 @@ export function ChatTable({
 
       {/* Scrollable rows */}
       <div className="flex-1 overflow-auto px-6">
-        {filteredAndSorted.length === 0 ? (
+        {chats.length === 0 ? (
           <div className="text-center text-muted-foreground py-8">
-            {search
-              ? `No chats found for "${search}"`
-              : hasColumnFilters
-              ? "No chats match filters"
-              : "No chats found"}
+            {hasAnyFilter ? "No chats match filters" : "No chats found"}
           </div>
         ) : (
           <div className="py-1">
-            {filteredAndSorted.map((chat, index) => (
+            {chats.map((chat, index) => (
               <div
                 key={chat.id}
                 ref={index === selectedIndex ? selectedRowRef : undefined}
