@@ -1,4 +1,8 @@
+import { unstable_cache } from "next/cache";
 import pool from "@/lib/db";
+
+const CACHE_REVALIDATE_SECONDS = 300;
+const CACHE_TAGS = ["column-creations"];
 
 export interface ColumnCreationRow {
   batch_id: string;
@@ -46,7 +50,13 @@ const SORT_COLUMNS: Record<SortKey, string> = {
   date: "created_at",
 };
 
-export async function getColumnCreations(
+export const getColumnCreations = unstable_cache(
+  _getColumnCreations,
+  ["column-creations:list"],
+  { revalidate: CACHE_REVALIDATE_SECONDS, tags: CACHE_TAGS }
+);
+
+async function _getColumnCreations(
   search?: string,
   page = 1,
   pageSize = 20,
@@ -109,11 +119,14 @@ export async function getColumnCreations(
              ) / 1000000.0
            ELSE 0 END
          )
-         FROM workflows cw
-         JOIN activities a ON a.workflow_id = cw.workflow_id AND a.activity_type = 'invokeModel'
+         FROM activities a
          LEFT JOIN model_pricing mp ON mp.model_id = a.input->>'modelId'
-         WHERE cw.parent_workflow_id = cgw.workflow_id
-            OR cw.workflow_id = cgw.workflow_id
+         WHERE a.activity_type = 'invokeModel'
+           AND a.workflow_id IN (
+             SELECT cgw.workflow_id
+             UNION ALL
+             SELECT w2.workflow_id FROM workflows w2 WHERE w2.parent_workflow_id = cgw.workflow_id
+           )
        ), 0)::float as total_cost_usd,
        w.start_time as created_at
      FROM column_generation_workflows cgw

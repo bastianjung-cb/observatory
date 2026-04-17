@@ -2,7 +2,7 @@
 
 import { exec } from "child_process";
 import { resolve as resolvePath } from "path";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 
 const PROJECT_ROOT = resolvePath(process.cwd(), "..");
 
@@ -18,6 +18,8 @@ export async function runSync(): Promise<{ success: boolean; message: string }> 
         } else {
           console.log("Sync output:", stdout);
           revalidatePath("/");
+          revalidateTag("dashboard", { expire: 0 });
+          revalidateTag("column-creations", { expire: 0 });
           resolve({ success: true, message: stdout });
         }
       }
