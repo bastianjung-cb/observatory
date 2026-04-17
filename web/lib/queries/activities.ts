@@ -53,10 +53,10 @@ export interface CostSummary {
 export interface ModelPricing {
   id: number;
   model_id: string;
-  input_price: string;
-  output_price: string;
-  cache_read_price: string | null;
-  reasoning_price: string | null;
+  input_price: number;
+  output_price: number;
+  cache_read_price: number | null;
+  reasoning_price: number | null;
 }
 
 export interface MessageInfo {
@@ -297,9 +297,14 @@ export async function getMessageCost(
 }
 
 export async function getAllModelPricing(): Promise<ModelPricing[]> {
+  // ::float8 casts NUMERIC → JS number so callers get actual numerics
+  // (pg returns NUMERIC as string by default to preserve arbitrary precision).
   const result = await pool.query(
-    `SELECT id, model_id, input_price::text, output_price::text,
-            cache_read_price::text, reasoning_price::text
+    `SELECT id, model_id,
+            input_price::float8 AS input_price,
+            output_price::float8 AS output_price,
+            cache_read_price::float8 AS cache_read_price,
+            reasoning_price::float8 AS reasoning_price
      FROM model_pricing ORDER BY model_id`
   );
   return result.rows;

@@ -4,16 +4,34 @@ import { revalidatePath } from "next/cache";
 import { upsertModelPricing, deleteModelPricing } from "@/lib/queries/activities";
 import { initAutoSync, startAutoSync, stopAutoSync, getAutoSyncStatus } from "@/lib/auto-sync";
 
+function parseRequiredPrice(formData: FormData, field: string): number {
+  const raw = (formData.get(field) as string | null)?.trim();
+  if (!raw) throw new Error(`${field} is required`);
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) {
+    throw new Error(`${field} must be a non-negative number (got ${JSON.stringify(raw)})`);
+  }
+  return n;
+}
+
+function parseOptionalPrice(formData: FormData, field: string): number | null {
+  const raw = (formData.get(field) as string | null)?.trim();
+  if (!raw) return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) {
+    throw new Error(`${field} must be a non-negative number (got ${JSON.stringify(raw)})`);
+  }
+  return n;
+}
+
 export async function saveModelPricing(formData: FormData) {
-  const modelId = formData.get("model_id") as string;
-  const inputPrice = parseFloat(formData.get("input_price") as string);
-  const outputPrice = parseFloat(formData.get("output_price") as string);
-  const cacheReadPrice = formData.get("cache_read_price")
-    ? parseFloat(formData.get("cache_read_price") as string)
-    : null;
-  const reasoningPrice = formData.get("reasoning_price")
-    ? parseFloat(formData.get("reasoning_price") as string)
-    : null;
+  const modelId = (formData.get("model_id") as string | null)?.trim();
+  if (!modelId) throw new Error("model_id is required");
+
+  const inputPrice = parseRequiredPrice(formData, "input_price");
+  const outputPrice = parseRequiredPrice(formData, "output_price");
+  const cacheReadPrice = parseOptionalPrice(formData, "cache_read_price");
+  const reasoningPrice = parseOptionalPrice(formData, "reasoning_price");
 
   await upsertModelPricing(modelId, inputPrice, outputPrice, cacheReadPrice, reasoningPrice);
   revalidatePath("/settings");

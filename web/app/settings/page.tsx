@@ -1,5 +1,13 @@
 import { getAllModelPricing, type ModelPricing } from "@/lib/queries/activities";
 
+function formatPrice(n: number | null): string {
+  if (n === null) return "—";
+  return `$${n.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  })}`;
+}
+
 function maskConnectionString(url: string | undefined): string {
   if (!url) return "not set";
   try {
@@ -157,10 +165,10 @@ export default async function SettingsPage() {
               models.map((m) => (
                 <TableRow key={m.id}>
                   <TableCell className="font-mono text-sm font-medium">{m.model_id}</TableCell>
-                  <TableCell className="text-right tabular-nums">${m.input_price}</TableCell>
-                  <TableCell className="text-right tabular-nums">${m.output_price}</TableCell>
-                  <TableCell className="text-right tabular-nums">{m.cache_read_price ? `$${m.cache_read_price}` : "—"}</TableCell>
-                  <TableCell className="text-right tabular-nums">{m.reasoning_price ? `$${m.reasoning_price}` : "—"}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatPrice(m.input_price)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatPrice(m.output_price)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatPrice(m.cache_read_price)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatPrice(m.reasoning_price)}</TableCell>
                   <TableCell>
                     <form action={removeModelPricing}>
                       <input type="hidden" name="id" value={m.id} />
