@@ -75,47 +75,29 @@ export async function getChats(
       u.email as user_email,
       COUNT(m.id)::int as message_count,
       MAX(m.created_at) as last_message_at,
-      (
-        SELECT COALESCE(SUM(
-          CASE WHEN mp.id IS NOT NULL THEN
-            (
-              COALESCE((act.output->'usage'->'inputTokens'->>'noCache')::numeric, 0) * mp.input_price
-              + COALESCE((act.output->'usage'->'inputTokens'->>'cacheRead')::numeric, 0) * COALESCE(mp.cache_read_price, mp.input_price)
-              + COALESCE((act.output->'usage'->'outputTokens'->>'text')::numeric, 0) * mp.output_price
-              + COALESCE((act.output->'usage'->'outputTokens'->>'reasoning')::numeric, 0) * COALESCE(mp.reasoning_price, mp.output_price)
-            ) / 1000000.0
-          ELSE 0 END
-        ), 0)
-        FROM messages m2
-        JOIN chat_workflows cw ON cw.message_id = m2.id
-        JOIN workflows w ON w.workflow_id = cw.workflow_id
-        JOIN activities act ON act.workflow_id = w.workflow_id AND act.activity_type = 'invokeModel'
-        LEFT JOIN model_pricing mp ON mp.model_id = act.input->>'modelId'
-        WHERE m2.chat_id = c.id
-      ) as total_cost_usd,
-      CASE WHEN COUNT(m.id) > 0 THEN
-        (
-          SELECT COALESCE(SUM(
-            CASE WHEN mp.id IS NOT NULL THEN
-              (
-                COALESCE((act.output->'usage'->'inputTokens'->>'noCache')::numeric, 0) * mp.input_price
-                + COALESCE((act.output->'usage'->'inputTokens'->>'cacheRead')::numeric, 0) * COALESCE(mp.cache_read_price, mp.input_price)
-                + COALESCE((act.output->'usage'->'outputTokens'->>'text')::numeric, 0) * mp.output_price
-                + COALESCE((act.output->'usage'->'outputTokens'->>'reasoning')::numeric, 0) * COALESCE(mp.reasoning_price, mp.output_price)
-              ) / 1000000.0
-            ELSE 0 END
-          ), 0)
-          FROM messages m2
-          JOIN chat_workflows cw ON cw.message_id = m2.id
-        JOIN workflows w ON w.workflow_id = cw.workflow_id
-          JOIN activities act ON act.workflow_id = w.workflow_id AND act.activity_type = 'invokeModel'
-          LEFT JOIN model_pricing mp ON mp.model_id = act.input->>'modelId'
-          WHERE m2.chat_id = c.id
-        ) / COUNT(m.id)
-      ELSE 0 END as cost_per_msg
+      COALESCE(MAX(cost.total), 0) as total_cost_usd,
+      CASE WHEN COUNT(m.id) > 0 THEN COALESCE(MAX(cost.total), 0) / COUNT(m.id) ELSE 0 END as cost_per_msg
     FROM chats c
     JOIN users u ON u.id = c.user_id
     LEFT JOIN messages m ON m.chat_id = c.id
+    LEFT JOIN LATERAL (
+      SELECT COALESCE(SUM(
+        CASE WHEN mp.id IS NOT NULL THEN
+          (
+            COALESCE((act.output->'usage'->'inputTokens'->>'noCache')::numeric, 0) * mp.input_price
+            + COALESCE((act.output->'usage'->'inputTokens'->>'cacheRead')::numeric, 0) * COALESCE(mp.cache_read_price, mp.input_price)
+            + COALESCE((act.output->'usage'->'outputTokens'->>'text')::numeric, 0) * mp.output_price
+            + COALESCE((act.output->'usage'->'outputTokens'->>'reasoning')::numeric, 0) * COALESCE(mp.reasoning_price, mp.output_price)
+          ) / 1000000.0
+        ELSE 0 END
+      ), 0) as total
+      FROM messages m2
+      JOIN chat_workflows cw ON cw.message_id = m2.id
+      JOIN workflows w ON w.workflow_id = cw.workflow_id
+      JOIN activities act ON act.workflow_id = w.workflow_id AND act.activity_type = 'invokeModel'
+      LEFT JOIN model_pricing mp ON mp.model_id = act.input->>'modelId'
+      WHERE m2.chat_id = c.id
+    ) cost ON true
     ${whereClause}
     GROUP BY c.id, c.title, u.given_name, u.family_name, u.email
     ORDER BY ${orderCol} ${orderDir} ${nullsHandling}
