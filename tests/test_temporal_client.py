@@ -198,3 +198,56 @@ def test_parse_child_workflows_keyed_by_workflow_id():
     assert children[0]["workflow_id"] == "child-x"
     assert children[0]["status"] == "COMPLETED"
     assert children[0]["run_id"] == "run-x"
+
+
+_ACTIVITY_TERMINAL_ATTR = {
+    EventType.EVENT_TYPE_ACTIVITY_TASK_COMPLETED: "activity_task_completed_event_attributes",
+    EventType.EVENT_TYPE_ACTIVITY_TASK_FAILED:    "activity_task_failed_event_attributes",
+    EventType.EVENT_TYPE_ACTIVITY_TASK_CANCELED:  "activity_task_canceled_event_attributes",
+    EventType.EVENT_TYPE_ACTIVITY_TASK_TIMED_OUT: "activity_task_timed_out_event_attributes",
+}
+
+
+def _make_activity_terminal(event_type, scheduled_event_id: int, at: datetime):
+    e = MagicMock()
+    e.event_type = event_type
+    e.event_time = _make_timestamp(at)
+    getattr(e, _ACTIVITY_TERMINAL_ATTR[event_type]).scheduled_event_id = scheduled_event_id
+    if event_type == EventType.EVENT_TYPE_ACTIVITY_TASK_COMPLETED:
+        getattr(e, _ACTIVITY_TERMINAL_ATTR[event_type]).result.payloads = []
+    return e
+
+
+def _make_activity_scheduled(event_id: int, activity_type: str, at: datetime):
+    sched = MagicMock()
+    sched.event_type = EventType.EVENT_TYPE_ACTIVITY_TASK_SCHEDULED
+    sched.event_id = event_id
+    sched.event_time = _make_timestamp(at)
+    sched.activity_task_scheduled_event_attributes.activity_type.name = activity_type
+    sched.activity_task_scheduled_event_attributes.input.payloads = []
+    return sched
+
+
+def test_parse_activities_handles_canceled():
+    from temporal_client import parse_activities_from_history
+    t = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    events = [
+        _make_activity_scheduled(11, "doThing", t),
+        _make_activity_terminal(EventType.EVENT_TYPE_ACTIVITY_TASK_CANCELED, 11, t),
+    ]
+    activities = parse_activities_from_history(events)
+    assert len(activities) == 1
+    assert activities[0]["activity_id"] == "11"
+    assert activities[0]["status"] == "CANCELED"
+
+
+def test_parse_activities_handles_timed_out():
+    from temporal_client import parse_activities_from_history
+    t = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    events = [
+        _make_activity_scheduled(13, "doThing", t),
+        _make_activity_terminal(EventType.EVENT_TYPE_ACTIVITY_TASK_TIMED_OUT, 13, t),
+    ]
+    activities = parse_activities_from_history(events)
+    assert len(activities) == 1
+    assert activities[0]["status"] == "TIMED_OUT"

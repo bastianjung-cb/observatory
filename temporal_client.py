@@ -83,7 +83,11 @@ def _event_time_to_datetime(event_time) -> datetime | None:
 
 
 def parse_activities_from_history(events: list) -> list[dict[str, Any]]:
-    """Parse activity events from a workflow history into structured dicts."""
+    """Parse activity events from a workflow history into structured dicts.
+
+    Keyed by the SCHEDULED event_id (same id we store in observer as `activity_id`).
+    Terminal: COMPLETED / FAILED / CANCELED / TIMED_OUT. Still-open: SCHEDULED.
+    """
     scheduled: dict[int, dict[str, Any]] = {}
     activities: list[dict[str, Any]] = []
 
@@ -120,15 +124,29 @@ def parse_activities_from_history(events: list) -> list[dict[str, Any]]:
                 activities.append(entry)
 
         elif event.event_type == EventType.EVENT_TYPE_ACTIVITY_TASK_FAILED:
-            attrs = event.activity_task_failed_event_attributes
-            sched_id = attrs.scheduled_event_id
+            sched_id = event.activity_task_failed_event_attributes.scheduled_event_id
             if sched_id in scheduled:
                 entry = scheduled.pop(sched_id)
                 entry["status"] = "FAILED"
                 entry["completed_time"] = _event_time_to_datetime(event.event_time)
                 activities.append(entry)
 
-    # Any still-scheduled activities (no completion event yet)
+        elif event.event_type == EventType.EVENT_TYPE_ACTIVITY_TASK_CANCELED:
+            sched_id = event.activity_task_canceled_event_attributes.scheduled_event_id
+            if sched_id in scheduled:
+                entry = scheduled.pop(sched_id)
+                entry["status"] = "CANCELED"
+                entry["completed_time"] = _event_time_to_datetime(event.event_time)
+                activities.append(entry)
+
+        elif event.event_type == EventType.EVENT_TYPE_ACTIVITY_TASK_TIMED_OUT:
+            sched_id = event.activity_task_timed_out_event_attributes.scheduled_event_id
+            if sched_id in scheduled:
+                entry = scheduled.pop(sched_id)
+                entry["status"] = "TIMED_OUT"
+                entry["completed_time"] = _event_time_to_datetime(event.event_time)
+                activities.append(entry)
+
     for entry in scheduled.values():
         activities.append(entry)
 
