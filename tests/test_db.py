@@ -604,3 +604,43 @@ def test_get_terminal_workflow_ids_empty_input(db_conn):
     from db import init_schema, get_terminal_workflow_ids
     init_schema(db_conn)
     assert get_terminal_workflow_ids(db_conn, []) == set()
+
+
+def test_fetch_nonterminal_root_workflow_ids_returns_roots_only(db_conn):
+    from db import init_schema, upsert_workflow, fetch_nonterminal_root_workflow_ids
+    init_schema(db_conn)
+
+    # Root, running (should be returned)
+    upsert_workflow(db_conn, {**_sample_workflow("chat-running"),
+                              "status": "RUNNING", "end_time": None, "output": None})
+    # Root, terminal (should be excluded)
+    upsert_workflow(db_conn, {**_sample_workflow("chat-done"), "status": "COMPLETED"})
+    # Child, running (should be excluded — only roots)
+    upsert_workflow(db_conn, {**_sample_workflow("chat-running"), "workflow_id": "child-of-running",
+                              "parent_workflow_id": "chat-running",
+                              "status": "RUNNING", "end_time": None, "output": None})
+    # Different prefix (should be excluded by prefix filter)
+    upsert_workflow(db_conn, {**_sample_workflow("generation-batch-xyz"),
+                              "status": "RUNNING", "end_time": None, "output": None})
+    db_conn.commit()
+
+    rows = fetch_nonterminal_root_workflow_ids(db_conn, "chat-")
+    ids = {r["workflow_id"] for r in rows}
+    assert ids == {"chat-running"}
+    row = [r for r in rows if r["workflow_id"] == "chat-running"][0]
+    assert row["run_id"] == "run-abc-123"
+    assert row["status"] == "RUNNING"
+    assert row["start_time"] is not None
+
+
+def test_fetch_nonterminal_root_workflow_ids_prefix_generation_batch(db_conn):
+    from db import init_schema, upsert_workflow, fetch_nonterminal_root_workflow_ids
+    init_schema(db_conn)
+    upsert_workflow(db_conn, {**_sample_workflow("generation-batch-a"),
+                              "status": "RUNNING", "end_time": None, "output": None})
+    upsert_workflow(db_conn, {**_sample_workflow("chat-b"),
+                              "status": "RUNNING", "end_time": None, "output": None})
+    db_conn.commit()
+
+    rows = fetch_nonterminal_root_workflow_ids(db_conn, "generation-batch-")
+    assert {r["workflow_id"] for r in rows} == {"generation-batch-a"}

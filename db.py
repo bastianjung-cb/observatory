@@ -379,6 +379,35 @@ def get_terminal_workflow_ids(
         return {row[0] for row in cur.fetchall()}
 
 
+def fetch_nonterminal_root_workflow_ids(
+    conn: psycopg.Connection, prefix: str
+) -> list[dict[str, Any]]:
+    """Return observer's root (parent IS NULL) non-terminal workflows whose
+    workflow_id starts with `prefix`. Used to union with Temporal's list so
+    workflows that closed in Temporal but haven't been indexed into visibility
+    yet still get re-fetched and transitioned.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT workflow_id, run_id, status, start_time, end_time "
+            "FROM workflows "
+            "WHERE workflow_id LIKE %s AND parent_workflow_id IS NULL "
+            "AND status NOT IN ('COMPLETED', 'FAILED', 'CANCELED', 'TERMINATED', 'TIMED_OUT', 'START_FAILED')",
+            (prefix + "%",),
+        )
+        rows = cur.fetchall()
+    return [
+        {
+            "workflow_id": r[0],
+            "run_id": r[1],
+            "status": r[2],
+            "start_time": r[3],
+            "close_time": r[4],
+        }
+        for r in rows
+    ]
+
+
 def get_last_sync(conn: psycopg.Connection, entity: str) -> datetime | None:
     with conn.cursor() as cur:
         cur.execute(
