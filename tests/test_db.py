@@ -493,3 +493,50 @@ def test_upsert_activity_does_not_regress_terminal_status(db_conn):
         row = cur.fetchone()
     assert row[0] == "COMPLETED"
     assert row[1] == {"ok": True}
+
+
+def test_upsert_column_generation_workflow_preserves_metadata(db_conn):
+    from db import init_schema, upsert_workflow, upsert_column_generation_workflow, upsert_users
+    init_schema(db_conn)
+    upsert_users(db_conn, [{
+        "id": "11111111-1111-1111-1111-111111111111",
+        "auth_id": "kinde_cgw_test",
+        "email": "cgw@example.com",
+        "given_name": "CGW",
+        "family_name": "Test",
+        "is_suspended": False,
+        "deleted_at": None,
+    }])
+    upsert_workflow(db_conn, _sample_workflow("generation-batch-xyz"))
+    db_conn.commit()
+
+    upsert_column_generation_workflow(db_conn, {
+        "workflow_id": "generation-batch-xyz",
+        "batch_id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+        "user_id": None, "metadata": None,
+    })
+    db_conn.commit()
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "UPDATE column_generation_workflows SET user_id=%s::uuid, metadata=%s::jsonb "
+            "WHERE workflow_id=%s",
+            ("11111111-1111-1111-1111-111111111111", '{"columnName": "Revenue"}', "generation-batch-xyz"),
+        )
+    db_conn.commit()
+
+    upsert_column_generation_workflow(db_conn, {
+        "workflow_id": "generation-batch-xyz",
+        "batch_id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+        "user_id": None, "metadata": None,
+    })
+    db_conn.commit()
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "SELECT user_id::text, metadata FROM column_generation_workflows WHERE workflow_id=%s",
+            ("generation-batch-xyz",),
+        )
+        row = cur.fetchone()
+    assert row[0] == "11111111-1111-1111-1111-111111111111"
+    assert row[1] == {"columnName": "Revenue"}

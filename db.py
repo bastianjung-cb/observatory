@@ -310,8 +310,8 @@ UPSERT_COLUMN_GENERATION_WORKFLOW_SQL = """
 INSERT INTO column_generation_workflows (workflow_id, batch_id, user_id, metadata)
 VALUES (%(workflow_id)s, %(batch_id)s, %(user_id)s, %(metadata)s)
 ON CONFLICT (workflow_id) DO UPDATE SET
-    user_id = EXCLUDED.user_id,
-    metadata = EXCLUDED.metadata
+    user_id = COALESCE(EXCLUDED.user_id, column_generation_workflows.user_id),
+    metadata = COALESCE(EXCLUDED.metadata, column_generation_workflows.metadata)
 """
 
 
@@ -322,7 +322,6 @@ def upsert_column_generation_workflow(conn: psycopg.Connection, data: dict[str, 
     }
     with conn.cursor() as cur:
         cur.execute(UPSERT_COLUMN_GENERATION_WORKFLOW_SQL, params)
-    conn.commit()
 
 
 UPSERT_ACTIVITY_SQL = """

@@ -214,6 +214,7 @@ async def sync_temporal_generation_data(observer_conn: psycopg.Connection) -> No
                     "user_id": None,
                     "metadata": None,
                 })
+                observer_conn.commit()
         except Exception:
             logger.exception("Failed to process generation workflow %s, skipping", wf_id)
             continue
