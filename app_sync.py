@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from datetime import datetime, timezone
 
 import psycopg
@@ -273,3 +274,46 @@ def sync_generation_batches(
         updated, len(batches), len(orphans), last_sync, tick_start,
     )
     return updated
+
+
+_MATERIALIZED_VIEWS = (
+    "mv_chat_stats",
+    "mv_column_creation_stats",
+    "mv_daily_activity_stats",
+)
+
+
+def refresh_materialized_views(observer_conn: psycopg.Connection) -> None:
+    """Refresh the dashboard/list MVs.
+
+    Uses CONCURRENTLY when the MV is already populated; falls back to plain
+    REFRESH on first run (CONCURRENTLY can't run on an unpopulated MV).
+    Each MV is refreshed in its own try/except — one failure doesn't block
+    the others. Caller commits at phase boundaries."""
+    for mv_name in _MATERIALIZED_VIEWS:
+        try:
+            t0 = time.monotonic()
+            with observer_conn.cursor() as cur:
+                cur.execute(
+                    "SELECT ispopulated FROM pg_matviews "
+                    "WHERE schemaname = 'public' AND matviewname = %s",
+                    (mv_name,),
+                )
+                row = cur.fetchone()
+                if row is None:
+                    raise RuntimeError(f"materialized view {mv_name} does not exist")
+                populated = bool(row[0])
+            mode = "CONCURRENTLY" if populated else ""
+            # mv_name is hardcoded — safe to interpolate.
+            with observer_conn.cursor() as cur:
+                cur.execute(f"REFRESH MATERIALIZED VIEW {mode} {mv_name}")
+            observer_conn.commit()
+            logger.info(
+                "Refreshed %s (%s) in %.2fs",
+                mv_name,
+                mode or "blocking",
+                time.monotonic() - t0,
+            )
+        except Exception:
+            logger.exception("Failed to refresh %s; continuing", mv_name)
+            observer_conn.rollback()
