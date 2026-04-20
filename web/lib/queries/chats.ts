@@ -1,4 +1,8 @@
+import { unstable_cache } from "next/cache";
 import pool from "@/lib/db";
+
+const CACHE_REVALIDATE_SECONDS = 300;
+const CACHE_TAGS = ["chats"];
 
 export interface ChatRow {
   id: string;
@@ -22,31 +26,20 @@ export interface ChatQueryFilters {
 
 const SORT_COLUMNS: Record<SortKey, string> = {
   user: "user_name",
-  title: "title",
-  messages: "message_count",
-  cost: "total_cost_usd",
+  title: "c.title",
+  messages: "s.message_count",
+  cost: "s.total_cost_usd",
   cost_per_msg: "cost_per_msg",
-  last_message: "last_message_at",
+  last_message: "s.last_message_at",
 };
 
-const COST_SUBQUERY_SQL = `
-  SELECT COALESCE(SUM(
-    CASE WHEN mp.id IS NOT NULL THEN
-      (
-        COALESCE((act.output->'usage'->'inputTokens'->>'noCache')::numeric, 0) * mp.input_price
-        + COALESCE((act.output->'usage'->'inputTokens'->>'cacheRead')::numeric, 0) * COALESCE(mp.cache_read_price, mp.input_price)
-        + COALESCE((act.output->'usage'->'outputTokens'->>'text')::numeric, 0) * mp.output_price
-        + COALESCE((act.output->'usage'->'outputTokens'->>'reasoning')::numeric, 0) * COALESCE(mp.reasoning_price, mp.output_price)
-      ) / 1000000.0
-    ELSE 0 END
-  ), 0) as total
-  FROM messages m2
-  JOIN chat_workflows cw ON cw.message_id = m2.id
-  JOIN activities act ON act.workflow_id = cw.workflow_id AND act.activity_type = 'invokeModel'
-  LEFT JOIN model_pricing mp ON mp.model_id = act.input->>'modelId'
-`;
+export const getChats = unstable_cache(
+  _getChats,
+  ["chats:list"],
+  { revalidate: CACHE_REVALIDATE_SECONDS, tags: CACHE_TAGS }
+);
 
-export async function getChats(
+async function _getChats(
   filters: ChatQueryFilters = {},
   page = 1,
   pageSize = 20,
@@ -57,7 +50,6 @@ export async function getChats(
   const { search, userFilter, titleFilter, minMessages } = filters;
 
   let whereClause = "WHERE c.deleted_at IS NULL";
-  let havingClause = "";
   const params: (string | number)[] = [];
   let paramIndex = 1;
 
@@ -69,10 +61,10 @@ export async function getChats(
       OR u.email ILIKE $${paramIndex}
       OR EXISTS (
         SELECT 1 FROM messages m2
-        JOIN message_parts mp ON mp.message_id = m2.id
+        JOIN message_parts mp2 ON mp2.message_id = m2.id
         WHERE m2.chat_id = c.id
-          AND mp.content->>'type' = 'text'
-          AND to_tsvector('english', mp.content->>'text') @@ plainto_tsquery('english', $${paramIndex + 1})
+          AND mp2.content->>'type' = 'text'
+          AND to_tsvector('english', mp2.content->>'text') @@ plainto_tsquery('english', $${paramIndex + 1})
       )
     )`;
     params.push(`%${term}%`, term);
@@ -96,89 +88,42 @@ export async function getChats(
   }
 
   if (typeof minMessages === "number" && minMessages > 0) {
-    havingClause = `HAVING COUNT(m.id) >= $${paramIndex}`;
+    whereClause += ` AND COALESCE(s.message_count, 0) >= $${paramIndex}`;
     params.push(minMessages);
     paramIndex += 1;
   }
 
-  // Count needs to account for HAVING (message-count filter), so wrap the
-  // grouped query.
-  const countQuery = havingClause
-    ? `
-    SELECT COUNT(*)::int as total FROM (
-      SELECT c.id
-      FROM chats c
-      JOIN users u ON u.id = c.user_id
-      LEFT JOIN messages m ON m.chat_id = c.id
-      ${whereClause}
-      GROUP BY c.id
-      ${havingClause}
-    ) sub
-  `
-    : `
+  const orderCol = SORT_COLUMNS[sortKey] || "s.last_message_at";
+  const orderDir = sortDir === "asc" ? "ASC" : "DESC";
+  const nullsHandling = sortDir === "desc" ? "NULLS LAST" : "NULLS FIRST";
+
+  const countQuery = `
     SELECT COUNT(*)::int as total
     FROM chats c
     JOIN users u ON u.id = c.user_id
+    LEFT JOIN mv_chat_stats s ON s.chat_id = c.id
     ${whereClause}
   `;
 
-  const orderCol = SORT_COLUMNS[sortKey] || "last_message_at";
-  const orderDir = sortDir === "asc" ? "ASC" : "DESC";
-  const nullsHandling = sortDir === "desc" ? "NULLS LAST" : "NULLS FIRST";
-  const sortNeedsCost = sortKey === "cost" || sortKey === "cost_per_msg";
-
-  const dataQuery = sortNeedsCost
-    ? `
+  const dataQuery = `
     SELECT
       c.id,
       c.title,
       COALESCE(u.given_name || ' ' || u.family_name, u.email, 'Unknown') as user_name,
       u.email as user_email,
-      COUNT(m.id)::int as message_count,
-      MAX(m.created_at) as last_message_at,
-      COALESCE(MAX(cost.total), 0) as total_cost_usd,
-      CASE WHEN COUNT(m.id) > 0 THEN COALESCE(MAX(cost.total), 0) / COUNT(m.id) ELSE 0 END as cost_per_msg
+      COALESCE(s.message_count, 0) as message_count,
+      s.last_message_at,
+      COALESCE(s.total_cost_usd, 0)::float as total_cost_usd,
+      CASE WHEN COALESCE(s.message_count, 0) > 0
+           THEN COALESCE(s.total_cost_usd, 0) / s.message_count
+           ELSE 0
+      END as cost_per_msg
     FROM chats c
     JOIN users u ON u.id = c.user_id
-    LEFT JOIN messages m ON m.chat_id = c.id
-    LEFT JOIN LATERAL (${COST_SUBQUERY_SQL} WHERE m2.chat_id = c.id) cost ON true
+    LEFT JOIN mv_chat_stats s ON s.chat_id = c.id
     ${whereClause}
-    GROUP BY c.id, c.title, u.given_name, u.family_name, u.email
-    ${havingClause}
     ORDER BY ${orderCol} ${orderDir} ${nullsHandling}
     LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
-  `
-    : `
-    WITH ranked AS (
-      SELECT
-        c.id,
-        c.title,
-        c.user_id,
-        COALESCE(u.given_name || ' ' || u.family_name, u.email, 'Unknown') as user_name,
-        u.email as user_email,
-        COUNT(m.id)::int as message_count,
-        MAX(m.created_at) as last_message_at
-      FROM chats c
-      JOIN users u ON u.id = c.user_id
-      LEFT JOIN messages m ON m.chat_id = c.id
-      ${whereClause}
-      GROUP BY c.id, c.title, c.user_id, u.given_name, u.family_name, u.email
-      ${havingClause}
-      ORDER BY ${orderCol} ${orderDir} ${nullsHandling}
-      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
-    )
-    SELECT
-      r.id,
-      r.title,
-      r.user_name,
-      r.user_email,
-      r.message_count,
-      r.last_message_at,
-      COALESCE(cost.total, 0)::float as total_cost_usd,
-      CASE WHEN r.message_count > 0 THEN COALESCE(cost.total, 0) / r.message_count ELSE 0 END as cost_per_msg
-    FROM ranked r
-    LEFT JOIN LATERAL (${COST_SUBQUERY_SQL} WHERE m2.chat_id = r.id) cost ON true
-    ORDER BY ${orderCol} ${orderDir} ${nullsHandling}
   `;
 
   const [countResult, dataResult] = await Promise.all([
