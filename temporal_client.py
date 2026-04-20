@@ -135,48 +135,65 @@ def parse_activities_from_history(events: list) -> list[dict[str, Any]]:
     return activities
 
 
+_CHILD_TERMINAL_EVENTS = {
+    EventType.EVENT_TYPE_CHILD_WORKFLOW_EXECUTION_COMPLETED:  ("child_workflow_execution_completed_event_attributes",  "COMPLETED"),
+    EventType.EVENT_TYPE_CHILD_WORKFLOW_EXECUTION_FAILED:     ("child_workflow_execution_failed_event_attributes",     "FAILED"),
+    EventType.EVENT_TYPE_CHILD_WORKFLOW_EXECUTION_CANCELED:   ("child_workflow_execution_canceled_event_attributes",   "CANCELED"),
+    EventType.EVENT_TYPE_CHILD_WORKFLOW_EXECUTION_TIMED_OUT:  ("child_workflow_execution_timed_out_event_attributes",  "TIMED_OUT"),
+    EventType.EVENT_TYPE_CHILD_WORKFLOW_EXECUTION_TERMINATED: ("child_workflow_execution_terminated_event_attributes", "TERMINATED"),
+}
+
+
 def parse_child_workflows_from_history(events: list) -> list[dict[str, Any]]:
-    """Parse child workflow events from a workflow history."""
-    initiated: dict[int, dict[str, Any]] = {}
+    """Parse child workflow events from a workflow history.
+
+    Keyed by child workflow_id (not event_id): all child events carry
+    workflow_execution.workflow_id, which matches Temporal's own correlation
+    attribute. Terminal statuses: COMPLETED / FAILED / CANCELED / TIMED_OUT /
+    TERMINATED / START_FAILED. Open: RUNNING (started) or PENDING (initiated
+    but never started).
+    """
+    initiated: dict[str, dict[str, Any]] = {}
     children: list[dict[str, Any]] = []
 
     for event in events:
         if event.event_type == EventType.EVENT_TYPE_START_CHILD_WORKFLOW_EXECUTION_INITIATED:
             attrs = event.start_child_workflow_execution_initiated_event_attributes
-            initiated[event.event_id] = {
-                "workflow_id": attrs.workflow_id,
+            wf_id = attrs.workflow_id
+            initiated[wf_id] = {
+                "workflow_id": wf_id,
                 "workflow_type": attrs.workflow_type.name,
                 "initiated_time": _event_time_to_datetime(event.event_time),
             }
 
+        elif event.event_type == EventType.EVENT_TYPE_START_CHILD_WORKFLOW_EXECUTION_FAILED:
+            attrs = event.start_child_workflow_execution_failed_event_attributes
+            wf_id = attrs.workflow_id
+            entry = initiated.pop(wf_id, {"workflow_id": wf_id})
+            entry["status"] = "START_FAILED"
+            entry["completed_time"] = _event_time_to_datetime(event.event_time)
+            children.append(entry)
+
         elif event.event_type == EventType.EVENT_TYPE_CHILD_WORKFLOW_EXECUTION_STARTED:
             attrs = event.child_workflow_execution_started_event_attributes
-            init_id = attrs.initiated_event_id
-            if init_id in initiated:
-                initiated[init_id]["run_id"] = attrs.workflow_execution.run_id
-                initiated[init_id]["started_time"] = _event_time_to_datetime(event.event_time)
+            wf_id = attrs.workflow_execution.workflow_id
+            if wf_id in initiated:
+                initiated[wf_id]["run_id"] = attrs.workflow_execution.run_id
+                initiated[wf_id]["started_time"] = _event_time_to_datetime(event.event_time)
+                initiated[wf_id]["status"] = "RUNNING"
 
-        elif event.event_type == EventType.EVENT_TYPE_CHILD_WORKFLOW_EXECUTION_COMPLETED:
-            attrs = event.child_workflow_execution_completed_event_attributes
-            init_id = attrs.initiated_event_id
-            if init_id in initiated:
-                entry = initiated.pop(init_id)
-                entry["status"] = "COMPLETED"
-                entry["completed_time"] = _event_time_to_datetime(event.event_time)
-                children.append(entry)
+        elif event.event_type in _CHILD_TERMINAL_EVENTS:
+            attr_name, status = _CHILD_TERMINAL_EVENTS[event.event_type]
+            attrs = getattr(event, attr_name)
+            wf_id = attrs.workflow_execution.workflow_id
+            entry = initiated.pop(wf_id, {"workflow_id": wf_id})
+            entry["status"] = status
+            entry["completed_time"] = _event_time_to_datetime(event.event_time)
+            children.append(entry)
 
-        elif event.event_type == EventType.EVENT_TYPE_CHILD_WORKFLOW_EXECUTION_FAILED:
-            attrs = event.child_workflow_execution_failed_event_attributes
-            init_id = attrs.initiated_event_id
-            if init_id in initiated:
-                entry = initiated.pop(init_id)
-                entry["status"] = "FAILED"
-                entry["completed_time"] = _event_time_to_datetime(event.event_time)
-                children.append(entry)
-
-    # Still-running children
     for entry in initiated.values():
-        entry["status"] = "RUNNING"
+        if "status" not in entry:
+            entry["status"] = "RUNNING" if "run_id" in entry else "PENDING"
         children.append(entry)
 
     return children
