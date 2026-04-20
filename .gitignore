@@ -16,3 +16,4 @@ wheels/
 node_modules/
 web/.next/
 web/out/
+logs/
