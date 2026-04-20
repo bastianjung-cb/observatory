@@ -48,7 +48,7 @@ CREATE TABLE IF NOT EXISTS workflows (
     workflow_id         TEXT UNIQUE NOT NULL,
     parent_workflow_id  TEXT REFERENCES workflows(workflow_id),
     workflow_name       TEXT,
-    run_id              TEXT NOT NULL,
+    run_id              TEXT,
     status              TEXT NOT NULL,
     start_time          TIMESTAMPTZ NOT NULL,
     end_time            TIMESTAMPTZ,
@@ -137,6 +137,7 @@ MIGRATIONS_SQL = """
 ALTER TABLE workflows ADD COLUMN IF NOT EXISTS parent_workflow_id TEXT REFERENCES workflows(workflow_id);
 ALTER TABLE workflows ADD COLUMN IF NOT EXISTS workflow_name TEXT;
 ALTER TABLE activities ADD COLUMN IF NOT EXISTS attempt INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE workflows ALTER COLUMN run_id DROP NOT NULL;
 """
 
 
