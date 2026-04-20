@@ -148,18 +148,23 @@ async def _ingest_workflow(
         if child["workflow_id"] in terminal_in_observer:
             continue
 
+        # Wrap each child in a savepoint so a failure in one child doesn't
+        # poison the transaction for subsequent siblings. psycopg3's
+        # conn.transaction() creates a SAVEPOINT when already inside a txn
+        # and auto-rolls-back to it on exception.
         try:
-            ingested += await _ingest_workflow(
-                temporal_client=temporal_client,
-                observer_conn=observer_conn,
-                workflow_id=child["workflow_id"],
-                run_id=child["run_id"],
-                parent_workflow_id=workflow_id,
-                workflow_name=child.get("workflow_type"),
-                status=child["status"],
-                start_time=child.get("started_time") or child.get("initiated_time") or start_time,
-                end_time=child.get("completed_time"),
-            )
+            with observer_conn.transaction():
+                ingested += await _ingest_workflow(
+                    temporal_client=temporal_client,
+                    observer_conn=observer_conn,
+                    workflow_id=child["workflow_id"],
+                    run_id=child["run_id"],
+                    parent_workflow_id=workflow_id,
+                    workflow_name=child.get("workflow_type"),
+                    status=child["status"],
+                    start_time=child.get("started_time") or child.get("initiated_time") or start_time,
+                    end_time=child.get("completed_time"),
+                )
         except Exception:
             logger.exception("Failed to process child workflow %s, skipping", child["workflow_id"])
 
@@ -354,6 +359,14 @@ async def run_sync() -> None:
                 app_conn.close()
         except Exception:
             logger.exception("Phase sync_generation_batches failed; continuing")
+            observer_conn.rollback()
+
+        try:
+            logger.info("Phase: refresh_materialized_views")
+            from app_sync import refresh_materialized_views
+            refresh_materialized_views(observer_conn)
+        except Exception:
+            logger.exception("Phase refresh_materialized_views failed; continuing")
             observer_conn.rollback()
 
     finally:
