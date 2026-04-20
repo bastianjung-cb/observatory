@@ -19,35 +19,64 @@ async def get_client() -> Client:
     return await Client.connect(TEMPORAL_HOST, namespace=TEMPORAL_NAMESPACE)
 
 
-async def list_chat_workflow_ids(client: Client) -> list[dict[str, str]]:
-    """List all workflow executions matching chat-* pattern.
+async def _list_workflows_since(
+    client: Client,
+    id_prefix: str,
+    since: datetime | None,
+) -> list[dict[str, Any]]:
+    """List workflows whose WorkflowId starts with `id_prefix`:
+    all currently Running + all closed with CloseTime > `since`.
 
-    Returns list of dicts with workflow_id, run_id, and status.
+    `since=None` → no lower bound on CloseTime (initial sync / backfill).
+    Dedup'd by workflow_id.
     """
-    workflows = []
-    async for wf in client.list_workflows('WorkflowId STARTS_WITH "chat-"'):
-        workflows.append({
+    seen: dict[str, dict[str, Any]] = {}
+
+    async for wf in client.list_workflows(
+        f'WorkflowId STARTS_WITH "{id_prefix}" AND ExecutionStatus = "Running"'
+    ):
+        seen[wf.id] = {
             "workflow_id": wf.id,
             "run_id": wf.run_id,
             "status": wf.status.name if wf.status else "UNKNOWN",
             "start_time": wf.start_time,
             "close_time": wf.close_time,
-        })
-    return workflows
+        }
 
-
-async def list_generation_batch_workflow_ids(client: Client) -> list[dict[str, str]]:
-    """List all workflow executions matching generation-batch-* pattern."""
-    workflows = []
-    async for wf in client.list_workflows('WorkflowId STARTS_WITH "generation-batch-"'):
-        workflows.append({
+    if since is None:
+        closed_query = f'WorkflowId STARTS_WITH "{id_prefix}" AND ExecutionStatus != "Running"'
+    else:
+        closed_query = (
+            f'WorkflowId STARTS_WITH "{id_prefix}" '
+            f'AND ExecutionStatus != "Running" '
+            f'AND CloseTime > "{since.isoformat()}"'
+        )
+    async for wf in client.list_workflows(closed_query):
+        if wf.id in seen:
+            continue
+        seen[wf.id] = {
             "workflow_id": wf.id,
             "run_id": wf.run_id,
             "status": wf.status.name if wf.status else "UNKNOWN",
             "start_time": wf.start_time,
             "close_time": wf.close_time,
-        })
-    return workflows
+        }
+
+    return list(seen.values())
+
+
+async def list_chat_workflow_ids(
+    client: Client, since: datetime | None = None
+) -> list[dict[str, Any]]:
+    """Chat workflows currently Running + closed since `since`."""
+    return await _list_workflows_since(client, "chat-", since)
+
+
+async def list_generation_batch_workflow_ids(
+    client: Client, since: datetime | None = None
+) -> list[dict[str, Any]]:
+    """generation-batch workflows currently Running + closed since `since`."""
+    return await _list_workflows_since(client, "generation-batch-", since)
 
 
 def _decode_payloads(payloads) -> Any | None:
