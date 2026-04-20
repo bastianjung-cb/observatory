@@ -15,6 +15,9 @@ def db_conn():
     conn = psycopg.connect(POSTGRES_DSN)
     yield conn
     with conn.cursor() as cur:
+        cur.execute("DROP MATERIALIZED VIEW IF EXISTS mv_daily_activity_stats CASCADE")
+        cur.execute("DROP MATERIALIZED VIEW IF EXISTS mv_column_creation_stats CASCADE")
+        cur.execute("DROP MATERIALIZED VIEW IF EXISTS mv_chat_stats CASCADE")
         cur.execute("DROP TABLE IF EXISTS column_generation_workflows CASCADE")
         cur.execute("DROP TABLE IF EXISTS chat_workflows CASCADE")
         cur.execute("DROP TABLE IF EXISTS activities CASCADE")
