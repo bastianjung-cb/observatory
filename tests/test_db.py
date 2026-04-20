@@ -1,9 +1,13 @@
+import os
 import uuid
 
 import pytest
 import psycopg
 
-POSTGRES_DSN = "postgresql://observer:observer@localhost:5436/observer"
+POSTGRES_DSN = os.environ.get(
+    "TEST_DATABASE_URL",
+    "postgresql://observer:observer@localhost:5436/observer",
+)
 
 
 @pytest.fixture
@@ -20,6 +24,8 @@ def db_conn():
         cur.execute("DROP TABLE IF EXISTS chats CASCADE")
         cur.execute("DROP TABLE IF EXISTS users CASCADE")
         cur.execute("DROP TABLE IF EXISTS sync_state CASCADE")
+        cur.execute("DROP TABLE IF EXISTS settings CASCADE")
+        cur.execute("DROP TABLE IF EXISTS model_pricing CASCADE")
     conn.commit()
     conn.close()
 
