@@ -42,13 +42,13 @@ export type SortKey = "column_name" | "variant" | "rows" | "status" | "cost" | "
 export type SortDir = "asc" | "desc";
 
 const SORT_COLUMNS: Record<SortKey, string> = {
-  column_name: "column_name",
-  variant: "variant",
-  rows: "total_rows",
-  status: "w.status",
-  cost: "total_cost_usd",
+  column_name: "cgw.column_name",
+  variant: "cgw.variant",
+  rows: "cgw.total_rows",
+  status: "cgw.status",
+  cost: "cgw.total_cost_usd",
   user: "user_name",
-  date: "created_at",
+  date: "cgw.start_time",
 };
 
 export interface ColumnCreationFilters {
@@ -81,8 +81,8 @@ async function _getColumnCreations(
   if (search && search.trim()) {
     const term = search.trim();
     whereClause += ` AND (
-      cgw.metadata->>'columnName' ILIKE $${paramIndex}
-      OR cgw.metadata->>'prompt' ILIKE $${paramIndex}
+      cgw.column_name ILIKE $${paramIndex}
+      OR cgw.prompt ILIKE $${paramIndex}
       OR COALESCE(u.given_name || ' ' || u.family_name, u.email, '') ILIKE $${paramIndex}
     )`;
     params.push(`%${term}%`);
@@ -90,7 +90,7 @@ async function _getColumnCreations(
   }
 
   if (columnFilter && columnFilter.trim()) {
-    whereClause += ` AND cgw.metadata->>'columnName' ILIKE $${paramIndex}`;
+    whereClause += ` AND cgw.column_name ILIKE $${paramIndex}`;
     params.push(`%${columnFilter.trim()}%`);
     paramIndex += 1;
   }
@@ -102,20 +102,19 @@ async function _getColumnCreations(
   }
 
   if (statusFilter && statusFilter.trim()) {
-    whereClause += ` AND w.status ILIKE $${paramIndex}`;
+    whereClause += ` AND cgw.status ILIKE $${paramIndex}`;
     params.push(`%${statusFilter.trim()}%`);
     paramIndex += 1;
   }
 
   const countQuery = `
     SELECT COUNT(*) as total
-    FROM column_generation_workflows cgw
-    JOIN workflows w ON w.workflow_id = cgw.workflow_id
+    FROM mv_column_creation_stats cgw
     LEFT JOIN users u ON u.id = cgw.user_id
     ${whereClause}
   `;
 
-  const orderCol = SORT_COLUMNS[sortKey] || "created_at";
+  const orderCol = SORT_COLUMNS[sortKey] || "cgw.start_time";
   const orderDir = sortDir === "asc" ? "ASC" : "DESC";
   const nullsHandling = sortDir === "desc" ? "NULLS LAST" : "NULLS FIRST";
 
@@ -123,39 +122,18 @@ async function _getColumnCreations(
     SELECT
        cgw.batch_id,
        cgw.workflow_id,
-       w.run_id,
-       cgw.metadata->>'columnName' as column_name,
-       cgw.metadata->>'prompt' as prompt,
-       cgw.metadata->>'variant' as variant,
-       COALESCE((cgw.metadata->>'totalRows')::int, 0) as total_rows,
-       COALESCE((cgw.metadata->>'completedRows')::int, 0) as completed_rows,
-       COALESCE((cgw.metadata->>'failedRows')::int, 0) as failed_rows,
-       w.status,
+       cgw.column_name,
+       cgw.prompt,
+       cgw.variant,
+       cgw.total_rows,
+       cgw.completed_rows,
+       cgw.failed_rows,
+       cgw.status,
        COALESCE(u.given_name || ' ' || u.family_name, u.email, 'Unknown') as user_name,
        u.email as user_email,
-       COALESCE((
-         SELECT SUM(
-           CASE WHEN mp.id IS NOT NULL THEN
-             (
-               COALESCE((a.output->'usage'->'inputTokens'->>'noCache')::numeric, 0) * mp.input_price
-               + COALESCE((a.output->'usage'->'inputTokens'->>'cacheRead')::numeric, 0) * COALESCE(mp.cache_read_price, mp.input_price)
-               + COALESCE((a.output->'usage'->'outputTokens'->>'text')::numeric, 0) * mp.output_price
-               + COALESCE((a.output->'usage'->'outputTokens'->>'reasoning')::numeric, 0) * COALESCE(mp.reasoning_price, mp.output_price)
-             ) / 1000000.0
-           ELSE 0 END
-         )
-         FROM activities a
-         LEFT JOIN model_pricing mp ON mp.model_id = a.input->>'modelId'
-         WHERE a.activity_type = 'invokeModel'
-           AND a.workflow_id IN (
-             SELECT cgw.workflow_id
-             UNION ALL
-             SELECT w2.workflow_id FROM workflows w2 WHERE w2.parent_workflow_id = cgw.workflow_id
-           )
-       ), 0)::float as total_cost_usd,
-       w.start_time as created_at
-     FROM column_generation_workflows cgw
-     JOIN workflows w ON w.workflow_id = cgw.workflow_id
+       cgw.total_cost_usd,
+       cgw.start_time as created_at
+     FROM mv_column_creation_stats cgw
      LEFT JOIN users u ON u.id = cgw.user_id
      ${whereClause}
      ORDER BY ${orderCol} ${orderDir} ${nullsHandling}
@@ -181,14 +159,21 @@ export async function getColumnCreation(
     `SELECT
        cgw.batch_id,
        cgw.workflow_id,
-       cgw.metadata,
+       jsonb_build_object(
+         'columnName', cgw.column_name,
+         'prompt', cgw.prompt,
+         'variant', cgw.variant,
+         'totalRows', cgw.total_rows,
+         'completedRows', cgw.completed_rows,
+         'failedRows', cgw.failed_rows,
+         'status', cgw.status
+       ) as metadata,
        COALESCE(u.given_name || ' ' || u.family_name, u.email, 'Unknown') as user_name,
        u.email as user_email,
-       w.status,
-       w.start_time,
-       w.end_time
-     FROM column_generation_workflows cgw
-     JOIN workflows w ON w.workflow_id = cgw.workflow_id
+       cgw.status,
+       cgw.start_time,
+       cgw.end_time
+     FROM mv_column_creation_stats cgw
      LEFT JOIN users u ON u.id = cgw.user_id
      WHERE cgw.batch_id = $1::uuid`,
     [batchId]
