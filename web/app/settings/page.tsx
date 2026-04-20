@@ -32,6 +32,8 @@ import { saveModelPricing, removeModelPricing } from "./actions";
 import { EscapeToHome } from "./escape-to-home";
 import { AutoSyncToggle } from "./auto-sync-toggle";
 
+export const dynamic = "force-dynamic";
+
 export default async function SettingsPage() {
   let models: ModelPricing[];
   try {
