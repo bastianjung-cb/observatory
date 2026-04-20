@@ -215,34 +215,6 @@ def test_upsert_activities_skips_duplicates(db_conn):
         assert cur.fetchone()[0] == 1
 
 
-def test_is_workflow_terminal_returns_true_for_completed(db_conn):
-    from db import init_schema, upsert_workflow, is_workflow_terminal
-
-    init_schema(db_conn)
-    upsert_workflow(db_conn, _sample_workflow())
-
-    assert is_workflow_terminal(db_conn, "chat-9e138348-0b53-407e-900e-ccacb83ecf6f") is True
-
-
-def test_is_workflow_terminal_returns_false_for_running(db_conn):
-    from db import init_schema, upsert_workflow, is_workflow_terminal
-
-    init_schema(db_conn)
-    running = _sample_workflow()
-    running["status"] = "RUNNING"
-    upsert_workflow(db_conn, running)
-
-    assert is_workflow_terminal(db_conn, "chat-9e138348-0b53-407e-900e-ccacb83ecf6f") is False
-
-
-def test_is_workflow_terminal_returns_false_for_unknown(db_conn):
-    from db import init_schema, is_workflow_terminal
-
-    init_schema(db_conn)
-
-    assert is_workflow_terminal(db_conn, "chat-nonexistent") is False
-
-
 def test_init_schema_creates_all_tables(db_conn):
     from db import init_schema
 

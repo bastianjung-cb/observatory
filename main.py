@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 from pathlib import Path
+from datetime import datetime, timezone
 from typing import Any
 
 from dotenv import load_dotenv
@@ -12,7 +13,18 @@ import psycopg
 load_dotenv(Path(__file__).parent / ".env")
 
 from app_sync import sync_app_data
-from db import TERMINAL_STATUSES, run_migrations, init_schema, is_workflow_terminal, upsert_activities, upsert_workflow, upsert_chat_workflow, upsert_column_generation_workflow
+from db import (
+    fetch_nonterminal_root_workflow_ids,
+    get_last_sync,
+    get_terminal_workflow_ids,
+    init_schema,
+    run_migrations,
+    update_last_sync,
+    upsert_activities,
+    upsert_chat_workflow,
+    upsert_column_generation_workflow,
+    upsert_workflow,
+)
 from temporal_client import (
     _decode_payloads,
     fetch_workflow_history,
@@ -58,7 +70,10 @@ async def _ingest_workflow(
     start_time,
     end_time,
 ) -> int:
-    """Ingest a single workflow and its children recursively. Returns count ingested."""
+    """Ingest one workflow by fetching its full history.
+    Recurses into children that are NOT already terminal in observer.
+    Does not commit — caller commits once per subtree.
+    """
     events = await fetch_workflow_history(temporal_client, workflow_id, run_id)
 
     activities = parse_activities_from_history(events)
@@ -75,7 +90,6 @@ async def _ingest_workflow(
         "input": None,
         "output": None,
     }
-
     for event in events:
         if event.event_type == EventType.EVENT_TYPE_WORKFLOW_EXECUTION_STARTED:
             attrs = event.workflow_execution_started_event_attributes
@@ -89,14 +103,37 @@ async def _ingest_workflow(
     for act in activities:
         act["workflow_id"] = workflow_id
     upsert_activities(observer_conn, activities)
-    observer_conn.commit()
 
     ingested = 1
 
-    # Recursively ingest child workflows
+    # Batch-check which children are already terminal in observer — skip recursion for those.
+    recursable = [c for c in child_workflows if "run_id" in c]
+    recursable_ids = [c["workflow_id"] for c in recursable]
+    terminal_in_observer = (
+        get_terminal_workflow_ids(observer_conn, recursable_ids) if recursable_ids else set()
+    )
+
     for child in child_workflows:
         if "run_id" not in child:
-            continue  # Child not yet started
+            # PENDING / START_FAILED: record placeholder, no recursion possible.
+            # A later observation of the child's STARTED event will upsert the real run_id
+            # (UPSERT_WORKFLOW_SQL's COALESCE + WHERE NOT terminal allows the update).
+            upsert_workflow(observer_conn, {
+                "workflow_id": child["workflow_id"],
+                "parent_workflow_id": workflow_id,
+                "workflow_name": child.get("workflow_type"),
+                "run_id": None,
+                "status": child["status"],
+                "start_time": child.get("initiated_time") or start_time,
+                "end_time": child.get("completed_time"),
+                "input": None,
+                "output": None,
+            })
+            continue
+
+        if child["workflow_id"] in terminal_in_observer:
+            continue
+
         try:
             ingested += await _ingest_workflow(
                 temporal_client=temporal_client,
@@ -106,7 +143,7 @@ async def _ingest_workflow(
                 parent_workflow_id=workflow_id,
                 workflow_name=child.get("workflow_type"),
                 status=child["status"],
-                start_time=child.get("started_time") or child.get("initiated_time"),
+                start_time=child.get("started_time") or child.get("initiated_time") or start_time,
                 end_time=child.get("completed_time"),
             )
         except Exception:
@@ -116,31 +153,45 @@ async def _ingest_workflow(
 
 
 async def sync_temporal_data(observer_conn: psycopg.Connection) -> None:
-    """Sync workflow and activity data from Temporal into observer DB."""
+    """Sync chat workflow + activity data from Temporal into observer.
+
+    Candidate roots = Temporal (Running ∪ CloseTime>since) ∪ observer non-terminal
+    roots with prefix 'chat-'. Terminal-in-observer are skipped. Each root is
+    ingested atomically (one commit per subtree).
+    """
     logger.info("Connecting to Temporal...")
     temporal_client = await get_client()
 
-    logger.info("Listing chat workflows from Temporal...")
-    workflows = await list_chat_workflow_ids(temporal_client)
-    logger.info("Found %d chat workflows", len(workflows))
+    since = get_last_sync(observer_conn, "chat_workflows")
+    if since is None:
+        logger.warning(
+            "chat_workflows watermark missing — scanning full Temporal retention this tick"
+        )
+    logger.info("Listing chat workflows (since %s)...", since)
+    list_result = await list_chat_workflow_ids(temporal_client, since=since)
+    observer_fallback = fetch_nonterminal_root_workflow_ids(observer_conn, "chat-")
 
+    # Union by workflow_id; Temporal entry wins on duplicates (fresher status).
+    candidates: dict[str, dict] = {r["workflow_id"]: r for r in observer_fallback}
+    for wf in list_result:
+        candidates[wf["workflow_id"]] = wf
+
+    all_ids = list(candidates.keys())
+    terminal_in_observer = get_terminal_workflow_ids(observer_conn, all_ids)
+    to_ingest = [wf for wf_id, wf in candidates.items() if wf_id not in terminal_in_observer]
+    logger.info(
+        "Chat: %d from Temporal, %d observer non-terminal union, %d to ingest",
+        len(list_result), len(observer_fallback), len(to_ingest),
+    )
+
+    tick_start = datetime.now(timezone.utc)
     ingested = 0
-    skipped = 0
+    skipped = len(all_ids) - len(to_ingest)
 
-    for wf in workflows:
+    for wf in to_ingest:
         wf_id = wf["workflow_id"]
-
-        if wf["status"] not in TERMINAL_STATUSES:
-            logger.debug("Skipping non-terminal workflow %s (status=%s)", wf_id, wf["status"])
-            skipped += 1
-            continue
-
-        if is_workflow_terminal(observer_conn, wf_id):
-            skipped += 1
-            continue
-
         try:
-            logger.info("Processing workflow %s", wf_id)
+            logger.info("Processing workflow %s (status=%s)", wf_id, wf["status"])
             ingested += await _ingest_workflow(
                 temporal_client=temporal_client,
                 observer_conn=observer_conn,
@@ -155,13 +206,17 @@ async def sync_temporal_data(observer_conn: psycopg.Connection) -> None:
             message_id = _extract_message_id(wf_id)
             if message_id:
                 upsert_chat_workflow(observer_conn, wf_id, message_id)
-                observer_conn.commit()
+            observer_conn.commit()
         except Exception:
             logger.exception("Failed to process workflow %s, skipping", wf_id)
+            observer_conn.rollback()
             continue
 
+    update_last_sync(observer_conn, "chat_workflows", tick_start)
+    observer_conn.commit()
     logger.info(
-        "Temporal sync done. Ingested: %d, Skipped: %d", ingested, skipped
+        "Chat sync done. Ingested: %d, Skipped: %d, watermark→%s",
+        ingested, skipped, tick_start,
     )
 
 
@@ -173,30 +228,39 @@ def _extract_batch_id(workflow_id: str) -> str | None:
 
 
 async def sync_temporal_generation_data(observer_conn: psycopg.Connection) -> None:
-    """Sync generation batch workflow data from Temporal into observer DB."""
+    """Sync generation-batch workflow data from Temporal into observer."""
     logger.info("Connecting to Temporal for generation batches...")
     temporal_client = await get_client()
 
-    logger.info("Listing generation batch workflows from Temporal...")
-    workflows = await list_generation_batch_workflow_ids(temporal_client)
-    logger.info("Found %d generation batch workflows", len(workflows))
+    since = get_last_sync(observer_conn, "generation_batch_workflows")
+    if since is None:
+        logger.warning(
+            "generation_batch_workflows watermark missing — scanning full Temporal retention this tick"
+        )
+    logger.info("Listing generation-batch workflows (since %s)...", since)
+    list_result = await list_generation_batch_workflow_ids(temporal_client, since=since)
+    observer_fallback = fetch_nonterminal_root_workflow_ids(observer_conn, "generation-batch-")
 
+    candidates: dict[str, dict] = {r["workflow_id"]: r for r in observer_fallback}
+    for wf in list_result:
+        candidates[wf["workflow_id"]] = wf
+
+    all_ids = list(candidates.keys())
+    terminal_in_observer = get_terminal_workflow_ids(observer_conn, all_ids)
+    to_ingest = [wf for wf_id, wf in candidates.items() if wf_id not in terminal_in_observer]
+    logger.info(
+        "Generation: %d from Temporal, %d observer non-terminal union, %d to ingest",
+        len(list_result), len(observer_fallback), len(to_ingest),
+    )
+
+    tick_start = datetime.now(timezone.utc)
     ingested = 0
-    skipped = 0
+    skipped = len(all_ids) - len(to_ingest)
 
-    for wf in workflows:
+    for wf in to_ingest:
         wf_id = wf["workflow_id"]
-
-        if wf["status"] not in TERMINAL_STATUSES:
-            skipped += 1
-            continue
-
-        if is_workflow_terminal(observer_conn, wf_id):
-            skipped += 1
-            continue
-
         try:
-            logger.info("Processing generation workflow %s", wf_id)
+            logger.info("Processing generation workflow %s (status=%s)", wf_id, wf["status"])
             ingested += await _ingest_workflow(
                 temporal_client=temporal_client,
                 observer_conn=observer_conn,
@@ -216,12 +280,18 @@ async def sync_temporal_generation_data(observer_conn: psycopg.Connection) -> No
                     "user_id": None,
                     "metadata": None,
                 })
-                observer_conn.commit()
+            observer_conn.commit()
         except Exception:
             logger.exception("Failed to process generation workflow %s, skipping", wf_id)
+            observer_conn.rollback()
             continue
 
-    logger.info("Generation temporal sync done. Ingested: %d, Skipped: %d", ingested, skipped)
+    update_last_sync(observer_conn, "generation_batch_workflows", tick_start)
+    observer_conn.commit()
+    logger.info(
+        "Generation sync done. Ingested: %d, Skipped: %d, watermark→%s",
+        ingested, skipped, tick_start,
+    )
 
 
 async def run_sync() -> None:

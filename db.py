@@ -351,18 +351,6 @@ def upsert_activities(conn: psycopg.Connection, activities: list[dict[str, Any]]
         cur.executemany(UPSERT_ACTIVITY_SQL, params_list)
 
 
-def is_workflow_terminal(conn: psycopg.Connection, workflow_id: str) -> bool:
-    with conn.cursor() as cur:
-        cur.execute(
-            "SELECT status FROM workflows WHERE workflow_id = %s",
-            (workflow_id,),
-        )
-        row = cur.fetchone()
-    if row is None:
-        return False
-    return row[0] in TERMINAL_STATUSES
-
-
 def get_terminal_workflow_ids(
     conn: psycopg.Connection, workflow_ids: list[str]
 ) -> set[str]:
