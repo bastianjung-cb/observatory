@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useRef, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { useKeyboardNav } from "@/components/use-keyboard-nav";
+import { openTemporalWorkflow } from "@/lib/temporal-url";
 
 function timeAgo(date: Date): string {
   const now = Date.now();
@@ -30,6 +31,7 @@ function formatCost(cost: number | string | null): string {
 interface ColumnCreation {
   batch_id: string;
   workflow_id: string;
+  run_id: string | null;
   column_name: string | null;
   prompt: string | null;
   variant: string | null;
@@ -134,6 +136,21 @@ export function ColumnCreationTable({
       selectedRowRef.current?.scrollIntoView({ block: "nearest" });
     }
   }, [selectedIndex, rows.length]);
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === "w" || e.key === "W") {
+        const row = rows[selectedIndex];
+        if (row && openTemporalWorkflow(row.workflow_id, row.run_id)) {
+          e.preventDefault();
+        }
+      }
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [rows, selectedIndex]);
 
   function pushParam(field: string, value: string) {
     const current = typeof window !== "undefined" ? window.location.search : `?${searchParams.toString()}`;
