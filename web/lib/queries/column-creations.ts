@@ -7,6 +7,7 @@ const CACHE_TAGS = ["column-creations"];
 export interface ColumnCreationRow {
   batch_id: string;
   workflow_id: string;
+  run_id: string | null;
   column_name: string | null;
   prompt: string | null;
   variant: string | null;
@@ -122,6 +123,7 @@ async function _getColumnCreations(
     SELECT
        cgw.batch_id,
        cgw.workflow_id,
+       w.run_id,
        cgw.metadata->>'columnName' as column_name,
        cgw.metadata->>'prompt' as prompt,
        cgw.metadata->>'variant' as variant,
