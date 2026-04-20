@@ -28,21 +28,22 @@ Evidence gathered against the dev observer DB and local Temporal during the diag
 
 ### In scope (must-have)
 1. Drop the `status not in TERMINAL_STATUSES` skip in `main.py`.
-2. Extend `parse_child_workflows_from_history` for all terminal child event types; distinguish PENDING (initiated, never started) from RUNNING.
+2. Extend `parse_child_workflows_from_history` for all terminal child event types; distinguish PENDING (initiated, never started) from RUNNING. Change keying from event_id to child workflow_id (simpler, stable across fetches).
 3. Extend `parse_activities_from_history` for CANCELED and TIMED_OUT activity events.
-4. Progressive history fetch: per-workflow `last_event_id` checkpoint; incremental `fetch_history_events(start_event_id=last_event_id+1)`.
+4. **Bounded-cost refetch:** full re-fetch for every non-terminal workflow, zero re-fetch for terminal ones. Workflows to process = Temporal `Running` ∪ Temporal `CloseTime > since` ∪ observer non-terminal roots (to catch visibility-lag misses). Children: recurse only if not already terminal in observer (batched check per parent). No schema-level checkpoint.
 5. NULL-metadata backfill in `sync_generation_batches`; batched `UPDATE … FROM (VALUES …)`.
 6. `UPSERT_ACTIVITY_SQL`: `DO UPDATE … WHERE activities.status NOT IN (terminal)`.
 7. `UPSERT_COLUMN_GENERATION_WORKFLOW_SQL`: `COALESCE(EXCLUDED.*, existing)`.
-8. Batched `get_terminal_workflow_ids(ids) -> set[str]` replacing per-row `is_workflow_terminal`.
+8. Batched `get_terminal_workflow_ids(ids) -> set[str]` — used both in the root list and inside recursion.
 9. Dual-query Temporal listing (`Running` ∪ `CloseTime > since`) with per-type watermarks.
+10. New DB helper: `fetch_nonterminal_root_workflow_ids(prefix) -> list[dict]` — observer-side view to union with Temporal list, covering visibility-lag cases.
 
 ### In scope (should-have)
-10. Wrap each phase of `run_sync` in try/except + rollback + log-and-continue.
-11. Capture watermark `now` **before** the query in `sync_chats/messages/message_parts`.
-12. Batched commits: `upsert_workflow` / `upsert_chat_workflow` / `upsert_column_generation_workflow` stop committing per row; caller commits once per ingested workflow subtree so parent + children + activities land atomically.
-13. `upsert_activities` uses `executemany`.
-14. Rotated file logging: `logs/sync.log`, 10 MB × 5 backups, configurable via `OBSERVER_LOG_FILE`, `OBSERVER_LOG_MAX_BYTES`, `OBSERVER_LOG_BACKUP_COUNT`. Stderr mirror retained.
+11. Wrap each phase of `run_sync` in try/except + rollback + log-and-continue.
+12. Capture watermark `now` **before** the query in `sync_chats/messages/message_parts`.
+13. Batched commits: `upsert_workflow` / `upsert_chat_workflow` / `upsert_column_generation_workflow` stop committing per row; caller commits once per ingested workflow subtree so parent + children + activities land atomically.
+14. `upsert_activities` uses `executemany`.
+15. Rotated file logging: `logs/sync.log`, 10 MB × 5 backups, configurable via `OBSERVER_LOG_FILE`, `OBSERVER_LOG_MAX_BYTES`, `OBSERVER_LOG_BACKUP_COUNT`. Stderr mirror retained.
 
 ### Out of scope
 - **`sync_users` incremental sync.** Requires `User.updatedAt` on the app side. Tracked as follow-up.
@@ -92,33 +93,47 @@ _list_workflows_since(prefix, since):
 
 `since=None` on first tick after deploy results in a full retention scan. Accepted cost (user-approved: "OK if first run takes long as long as it succeeds"). Log WARN at start of that phase.
 
-### Ingestion with checkpoint
+### Ingestion (bounded-cost refetch)
 
-Both parsers (`parse_activities_from_history`, `parse_child_workflows_from_history`) build up state across events (SCHEDULED→COMPLETED, INITIATED→STARTED→COMPLETED) by keying partial entries in a dict. If progressive fetch returns only events after a watermark, a COMPLETED whose SCHEDULED was in a prior fetch has no matching key, and the transition is silently lost. **Both parsers must be seeded with observer's current non-terminal state before parsing a partial fetch.**
+Temporal's Python SDK does not expose a server-side start-at-event-id parameter; `fetch_history_events` always streams from event 1. Rather than paper over that with client-side filtering, the design accepts a full refetch for every workflow that still needs processing, and prunes ruthlessly which workflows need processing at all. Net cost per tick = O(non-terminal workflows × their current history size). Closed workflows cost zero after first ingestion.
 
 ```
-_ingest_workflow(…, last_event_id):
-    start = (last_event_id or 0) + 1
-    events = await fetch_workflow_history(client, wf_id, run_id, start_event_id=start)
+_ingest_workflow(…):
+    events = await fetch_workflow_history(client, wf_id, run_id)
+    activities = parse_activities_from_history(events)
+    children   = parse_child_workflows_from_history(events)
 
-    existing_activities = fetch_non_terminal_activities(conn, wf_id)       # dict[int, activity_entry]
-    existing_children   = fetch_non_terminal_children(conn, wf_id)         # dict[str, child_entry]
-
-    activities = parse_activities_from_history(events, seed=existing_activities)
-    children   = parse_child_workflows_from_history(events, seed=existing_children)
-
-    max_event_id = max((e.event_id for e in events), default=last_event_id or 0)
-    upsert_workflow(conn, {…, "last_event_id": max_event_id, "input": possibly_none, "output": possibly_none})
+    upsert_workflow(conn, {…, "input": extracted or None, "output": extracted or None})
     upsert_activities(conn, activities)
-    # recurse into children …
-    conn.commit()
+
+    child_ids = [c["workflow_id"] for c in children if "run_id" in c]
+    terminal_children = get_terminal_workflow_ids(conn, child_ids)  # single batched query
+
+    for child in children:
+        if child["workflow_id"] in terminal_children:
+            continue  # history is frozen; no need to re-fetch
+        if "run_id" not in child:
+            upsert_workflow(conn, {…PENDING/START_FAILED placeholder…})
+            continue
+        _ingest_workflow(…)  # recursive
+
+    # no conn.commit() here — caller commits once per subtree
 ```
 
-Parser keying change: `parse_child_workflows_from_history` keys its `initiated` dict by **child workflow_id** (not by event_id). All subsequent child events (`STARTED`, `COMPLETED`, `FAILED`, `CANCELED`, `TIMED_OUT`, `TERMINATED`) carry `attrs.workflow_execution.workflow_id`, which is stable across fetches. This makes seeding trivial: `seed = {row.workflow_id: {...} for row in existing_children}`.
+Because every invocation fetches the complete history, the parsers never need seeding: a COMPLETED event is always accompanied by its SCHEDULED / INITIATED counterpart in the same fetch. Parsers remain pure functions of `events`. `UPSERT_WORKFLOW_SQL` still `COALESCE`s `input` / `output` (defensive — handles the case of a workflow that didn't emit STARTED yet) and `run_id` (so a PENDING child's later observation fills in the real `run_id`).
 
-`parse_activities_from_history` continues keying by integer event_id (= the SCHEDULED event_id, stored in observer as `activity_id`). Seeding: `seed = {int(row.activity_id): {...} for row in existing_activities}`.
+Parser keying change (still valuable independently): `parse_child_workflows_from_history` keys its `initiated` dict by **child workflow_id** instead of event_id. The existing key-by-event-id works fine within a single fetch, but keying by workflow_id matches Temporal's actual correlation attribute (`workflow_execution.workflow_id`) and removes an implicit assumption.
 
-Checkpoint and all writes share one transaction per workflow subtree. On failure, neither advances — the next tick retries from the same floor. Also: `UPSERT_WORKFLOW_SQL` must `COALESCE(EXCLUDED.input, workflows.input)` and same for `output`, because progressive fetch may skip the `WORKFLOW_EXECUTION_STARTED` event (always event_id=1) and leave `input=None` in the ingest payload — we must not clobber a previously-stored `input`.
+### Root-workflow selection (closes visibility-lag gap)
+
+```
+roots = (Temporal Running ∪ Temporal CloseTime > since) ∪ (observer non-terminal roots for this prefix)
+        minus (terminal in observer)
+```
+
+The observer-side union handles the edge case where a workflow closed in Temporal but hasn't been indexed into visibility by the time we query — `CloseTime > since` misses it, and once `since` advances past its real close time, it's missed forever. Adding observer's own non-terminal roots to the candidate set means we re-fetch its history on the next tick and see the workflow-close event directly.
+
+For entries sourced only from observer (not in Temporal list), start_time and run_id come from observer; current status is inferred from the fetched history's terminal event (or stays as the observer's status if the history has no terminal event yet).
 
 ### Parser state machine (children)
 
@@ -139,31 +154,29 @@ Analogous: add handlers for `EVENT_TYPE_ACTIVITY_TASK_CANCELED` and `EVENT_TYPE_
 
 ## Schema changes
 
-One alembic migration, `migrations/versions/<rev>_add_workflows_last_event_id.py`:
+One alembic migration, `migrations/versions/<rev>_relax_workflows_run_id.py`:
 
 ```sql
-ALTER TABLE workflows ADD COLUMN last_event_id BIGINT;
+ALTER TABLE workflows ALTER COLUMN run_id DROP NOT NULL;
 ```
 
-Nullable; NULL = "never incrementally ingested", treated as 0 floor. `SCHEMA_SQL` in `db.py` also adds the column for fresh `init_schema` paths (used in tests). Alembic is authoritative in prod.
+PENDING and START_FAILED child workflows have no `run_id` at the time we first observe them; the column must be nullable so we can record them. `SCHEMA_SQL` in `db.py` is also updated (for fresh `init_schema` paths used in tests). Alembic is authoritative in prod.
 
-No rollback data migration. Old bad data is left in place (user-approved: "OK to keep the old data wrong"). `alembic downgrade -1` drops the column; prior code ignores it.
+No rollback data migration. Old bad data is left in place (user-approved: "OK to keep the old data wrong"). `alembic downgrade -1` backfills nulls with empty string and reinstates NOT NULL.
 
 ## Components (file-by-file changes)
 
 ### `db.py`
-- `SCHEMA_SQL`: add `last_event_id BIGINT` to `workflows`.
+- `SCHEMA_SQL`: make `run_id` nullable in `workflows`.
 - `TERMINAL_STATUSES`: unchanged.
-- `UPSERT_WORKFLOW_SQL`: in the DO UPDATE SET list, add `last_event_id = COALESCE(EXCLUDED.last_event_id, workflows.last_event_id)`, and change the existing `input` / `output` assignments to `input = COALESCE(EXCLUDED.input, workflows.input)` / `output = COALESCE(EXCLUDED.output, workflows.output)` so progressive fetches that miss `WORKFLOW_EXECUTION_STARTED`/`COMPLETED` don't clobber previously-stored values.
+- `UPSERT_WORKFLOW_SQL`: in the DO UPDATE SET list, change `input`/`output` assignments to `COALESCE(EXCLUDED.input, workflows.input)` / `COALESCE(EXCLUDED.output, workflows.output)` (defensive — don't clobber previously-extracted payloads if a re-ingest missed those events), and add `run_id = COALESCE(EXCLUDED.run_id, workflows.run_id)` so a PENDING child's real run_id fills in when we later observe its STARTED event.
 - `UPSERT_ACTIVITY_SQL`: `DO NOTHING` → `DO UPDATE SET status = EXCLUDED.status, attempt = EXCLUDED.attempt, started_time = EXCLUDED.started_time, completed_time = EXCLUDED.completed_time, output = EXCLUDED.output WHERE activities.status NOT IN ('COMPLETED', 'FAILED', 'CANCELED', 'TERMINATED', 'TIMED_OUT')`.
 - `UPSERT_COLUMN_GENERATION_WORKFLOW_SQL`: `EXCLUDED.*` → `COALESCE(EXCLUDED.*, column_generation_workflows.*)`.
-- New: `get_terminal_workflow_ids(conn, workflow_ids: list[str]) -> set[str]`.
-- New: `get_last_event_ids(conn, workflow_ids: list[str]) -> dict[str, int | None]`.
-- New: `fetch_non_terminal_activities(conn, workflow_id: str) -> dict[int, dict]` — seed for `parse_activities_from_history`.
-- New: `fetch_non_terminal_children(conn, parent_workflow_id: str) -> dict[str, dict]` — seed for `parse_child_workflows_from_history`.
-- `upsert_workflow` / `upsert_chat_workflow` / `upsert_column_generation_workflow`: remove `conn.commit()` — caller commits once per ingested workflow (see `_ingest_workflow` note below), not per individual upsert.
+- New: `get_terminal_workflow_ids(conn, workflow_ids: list[str]) -> set[str]` — used at root selection and inside recursion to skip terminal children.
+- New: `fetch_nonterminal_root_workflow_ids(conn, prefix: str) -> list[dict]` — rows with `workflow_id LIKE {prefix}%` AND `parent_workflow_id IS NULL` AND `status NOT IN (terminal)`. Each dict carries `workflow_id`, `run_id`, `status`, `start_time`, `end_time`. Used to union with Temporal's list in `sync_temporal_data` / `sync_temporal_generation_data`.
+- `upsert_workflow` / `upsert_chat_workflow` / `upsert_column_generation_workflow`: remove `conn.commit()` — caller commits once per ingested workflow subtree.
 - `upsert_activities`: use `executemany(UPSERT_ACTIVITY_SQL, params_list)` — single round-trip.
-- Delete `is_workflow_terminal` (single-row helper) after all call sites switch to `get_terminal_workflow_ids`. Dead code; no need to keep.
+- Delete `is_workflow_terminal` (single-row helper) after all call sites switch to `get_terminal_workflow_ids`. Dead code.
 
 ### `app_sync.py`
 - `sync_chats` / `sync_messages` / `sync_message_parts`: capture `now = datetime.now(timezone.utc)` **before** `get_last_sync`; pass `now` to `update_last_sync` at the end (closes the race).
@@ -174,25 +187,26 @@ No rollback data migration. Old bad data is left in place (user-approved: "OK to
   - `sync_generation_batches` as thin glue; WARN-logs orphans; advances watermark.
 
 ### `temporal_client.py`
-- New: `_list_workflows_since(client, prefix, since: datetime | None)` (see Architecture above).
+- New: `_list_workflows_since(client, prefix, since: datetime | None)` — `Running` ∪ `CloseTime > since`, dedup'd.
 - `list_chat_workflow_ids(client, since=None)` → delegates to `_list_workflows_since(client, "chat-", since)`.
 - `list_generation_batch_workflow_ids(client, since=None)` → delegates with `"generation-batch-"`.
-- `fetch_workflow_history(client, workflow_id, run_id, start_event_id: int | None = None) -> list`: pass `start_event_id=start_event_id` to `handle.fetch_history_events(...)` if provided.
-- `parse_child_workflows_from_history`: add handlers for CANCELED, TIMED_OUT, TERMINATED child events; START_CHILD_FAILED; change catch-all to emit PENDING for never-STARTED children, RUNNING for started-but-open. **Change keying from event_id to child workflow_id** so progressive fetches can seed the parser. New signature: `(events, seed: dict[str, dict] | None = None)`.
-- `parse_activities_from_history`: add handlers for CANCELED and TIMED_OUT. New signature: `(events, seed: dict[int, dict] | None = None)` — integer key is the SCHEDULED event_id, matching the `activity_id` column stored in observer.
+- `fetch_workflow_history`: signature unchanged (Temporal SDK exposes no server-side start-at-event-id). Always full history.
+- `parse_child_workflows_from_history`: add handlers for CANCELED, TIMED_OUT, TERMINATED child events; START_CHILD_FAILED; change catch-all to emit PENDING for never-STARTED children, RUNNING for started-but-open. **Key the `initiated` dict by child `workflow_id`** (all correlated events carry `attrs.workflow_execution.workflow_id`); matches Temporal's correlation attribute and avoids a subtle assumption. Signature unchanged — pure function of `events`.
+- `parse_activities_from_history`: add handlers for CANCELED and TIMED_OUT. Signature unchanged — pure function of `events`.
 
 ### `main.py`
 - Remove `if wf["status"] not in TERMINAL_STATUSES: continue` in both sync functions.
 - Replace per-row `is_workflow_terminal` with one batched `get_terminal_workflow_ids([…])`.
 - Pass `since=get_last_sync(…)` to the Temporal list functions; capture `tick_start = now()` before ingestion; `update_last_sync(…, tick_start)` after.
-- Batch-fetch `get_last_event_ids(…)` for the set of workflows to ingest; pass the correct `last_event_id` per workflow into `_ingest_workflow`.
-- `_ingest_workflow`: accept `last_event_id`; pass it to `fetch_workflow_history`; include it in the `upsert_workflow` call; also pass a `last_event_id` for recursed children (batch-fetch once at the outer call). `conn.commit()` happens once at the end of `_ingest_workflow` — so parent + all its children + all their activities land atomically, or none of them do.
-- `run_sync`: wrap each of the four phases in try/except with `logger.exception(...)` and `observer_conn.rollback()`. Commits happen at the workflow granularity inside ingestion loops; no top-level per-phase commit.
+- Union Temporal list with `fetch_nonterminal_root_workflow_ids(prefix)` before iterating; dedupe by workflow_id. Entries present only in observer use observer's `run_id` and `start_time`.
+- Subtract `get_terminal_workflow_ids` from the candidate set.
+- `_ingest_workflow`: does full-history fetch, parses activities and children. Before recursing, batch-calls `get_terminal_workflow_ids` on the parsed children and skips any already terminal in observer — PENDING/START_FAILED children (no run_id) get a placeholder upsert and are not recursed. No `conn.commit()` inside; the root of the subtree calls commit once when the subtree is complete.
+- `run_sync`: wrap each of the four phases in try/except with `logger.exception(...)` and `observer_conn.rollback()`. Commit at root-workflow granularity inside ingestion loops.
 - Add log configuration block (rotating file + stderr) early in module import.
 
-### `migrations/versions/<rev>_add_workflows_last_event_id.py`
-- `op.add_column('workflows', sa.Column('last_event_id', sa.BigInteger(), nullable=True))`
-- downgrade: `op.drop_column('workflows', 'last_event_id')`
+### `migrations/versions/<rev>_relax_workflows_run_id.py`
+- `op.alter_column('workflows', 'run_id', existing_type=sa.Text(), nullable=True)`
+- downgrade: backfill nulls with `''`, then re-apply NOT NULL.
 
 ### `tests/`
 - New: `tests/test_app_sync.py` (see Testing below).
@@ -256,22 +270,18 @@ logging.basicConfig(level=logging.INFO, handlers=[file_handler, stream_handler])
 - `test_upsert_activity_updates_non_terminal_status`
 - `test_upsert_activity_does_not_regress_terminal_status`
 - `test_upsert_column_generation_workflow_preserves_metadata`
-- `test_upsert_workflow_preserves_last_event_id`
-- `test_upsert_workflow_preserves_input_output_on_partial_reingest`
+- `test_upsert_workflow_preserves_input_output_when_excluded_is_null`
+- `test_upsert_workflow_run_id_fills_in_when_previously_null`
 - `test_get_terminal_workflow_ids_returns_only_terminal_subset`
-- `test_get_last_event_ids_returns_map_with_nulls`
-- `test_fetch_non_terminal_activities_returns_dict_keyed_by_int_activity_id`
-- `test_fetch_non_terminal_children_returns_dict_keyed_by_workflow_id`
+- `test_fetch_nonterminal_root_workflow_ids_returns_roots_only`
 
 **`tests/test_temporal_client.py` (extend, parsers only — no live Temporal):**
 - `test_parse_child_workflows_handles_canceled_timed_out_terminated`
 - `test_parse_child_workflows_marks_start_failed`
 - `test_parse_child_workflows_open_children_are_pending_not_running`
 - `test_parse_child_workflows_keyed_by_workflow_id`
-- `test_parse_child_workflows_seeded_from_observer_state_completes_transition` — seeded `initiated` dict + incoming FAILED event matches by workflow_id and emits the transition.
-- `test_parse_activities_handles_canceled_timed_out`
-- `test_parse_activities_seeded_from_observer_state_completes_transition` — seeded `scheduled` dict + incoming COMPLETED event matches by event_id.
-- `test_fetch_workflow_history_passes_start_event_id`
+- `test_parse_activities_handles_canceled`
+- `test_parse_activities_handles_timed_out`
 
 ### Fixture
 - DSN from `TEST_DATABASE_URL`; default `postgresql://observer:observer@localhost:5436/observer`.
@@ -298,24 +308,25 @@ logging.basicConfig(level=logging.INFO, handlers=[file_handler, stream_handler])
 5. No feature flags, no staged rollout. Changes are additive on the read path.
 
 ### Rollback
-`alembic downgrade -1` drops `workflows.last_event_id`. Revert the branch. Data written under new semantics (COALESCE metadata, new watermark entries) remains compatible with the pre-fix code path.
+`alembic downgrade -1` reinstates `NOT NULL` on `workflows.run_id` (backfills nulls with `''` first). Revert the branch. Data written under new semantics (COALESCE metadata, new watermark entries, PENDING/START_FAILED statuses) remains compatible with the pre-fix code path — the old code doesn't write those statuses but also doesn't choke on them.
 
 ## Risks & mitigations
 
 | # | Risk | Mitigation |
 |---|------|------------|
-| 1 | `last_event_id` checkpoint advances past events we failed to write | Checkpoint update + data writes share a transaction; rollback on error leaves checkpoint un-advanced. |
-| 2 | Temporal `start_event_id` parameter behaves unexpectedly on replay / reset workflows | Covered by `test_fetch_workflow_history_passes_start_event_id` + manual verification. Documented SDK behavior: inclusive event-id floor; replay produces identical event stream up to current position. |
-| 3 | First-tick catch-up on real data exceeds invoker timeout | User accepted long first tick. Document in rollout note. |
-| 4 | Test fixture pointed at dev/staging DB by mistake → teardown drops real tables | Env-driven DSN + fixture WARN on default-that-is-reachable. Developers must opt in explicitly. |
-| 5 | Large `backfill_ids` list in `_fetch_batches_to_enrich` ANY(%s) clause | Log a WARN if NULL-metadata row count exceeds a sanity threshold (e.g. 10k). |
-| 6 | PENDING / START_FAILED are new statuses the UI doesn't know | UI already renders any status via `Badge`. No visual regression; new statuses just show up with the string label. |
+| 1 | Full history refetch for long-running workflows each tick | Bounded: only non-terminal workflows are refetched. Closed workflows cost zero. Children already terminal in observer are not recursed into. At very large scale (10k-event workflows held open for hours with short tick cadence) this remains a real cost — surface as a follow-up (progressive via `next_page_token`) if profiling shows it. |
+| 2 | First-tick catch-up on real data exceeds invoker timeout | User accepted long first tick. Log WARN on missing watermarks. Document in rollout note. |
+| 3 | Test fixture pointed at dev/staging DB by mistake → teardown drops real tables | Env-driven DSN + fixture WARN on default-that-is-reachable. Developers must opt in explicitly. |
+| 4 | Large `backfill_ids` list in `_fetch_batches_to_enrich` ANY(%s) clause | Log a WARN if NULL-metadata row count exceeds a sanity threshold (e.g. 10k). |
+| 5 | PENDING / START_FAILED are new statuses the UI doesn't know | UI already renders any status via `Badge`. No visual regression; new statuses just show up with the string label. |
+| 6 | Visibility lag causes a workflow to close in Temporal but not be listed in `CloseTime > since` before `since` advances past it | Mitigated: observer's own non-terminal roots are unioned into the candidate set each tick, so a workflow stuck in "RUNNING in observer" gets its history re-fetched, and the terminal event at the end of that history triggers the status transition. |
 
 ## Non-goals (explicit)
 
 - Incremental `sync_users`.
 - Orphan deletion.
 - Parallel history fetches.
+- Progressive Temporal history via `next_page_token` checkpointing. Deferred until profiling at real scale justifies it.
 - UI changes.
 - Auth / permissions changes.
 - Historical data recovery / re-ingestion.
