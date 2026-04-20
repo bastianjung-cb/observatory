@@ -540,3 +540,49 @@ def test_upsert_column_generation_workflow_preserves_metadata(db_conn):
         row = cur.fetchone()
     assert row[0] == "11111111-1111-1111-1111-111111111111"
     assert row[1] == {"columnName": "Revenue"}
+
+
+def test_upsert_workflow_preserves_input_output_when_excluded_is_null(db_conn):
+    from db import init_schema, upsert_workflow
+    init_schema(db_conn)
+
+    wf = _sample_workflow("chat-io-1")
+    wf["status"] = "RUNNING"; wf["end_time"] = None; wf["output"] = None
+    upsert_workflow(db_conn, wf)
+    db_conn.commit()
+
+    wf2 = _sample_workflow("chat-io-1")
+    wf2["input"] = None; wf2["output"] = None
+    wf2["status"] = "RUNNING"; wf2["end_time"] = None
+    upsert_workflow(db_conn, wf2)
+    db_conn.commit()
+
+    with db_conn.cursor() as cur:
+        cur.execute("SELECT input, output FROM workflows WHERE workflow_id=%s", ("chat-io-1",))
+        row = cur.fetchone()
+    assert row[0] == {"prompt": "hello"}
+    assert row[1] is None
+
+
+def test_upsert_workflow_run_id_fills_in_when_previously_null(db_conn):
+    """PENDING child starts with run_id=NULL; later STARTED event upsert must fill it."""
+    from db import init_schema, upsert_workflow
+    init_schema(db_conn)
+
+    wf = _sample_workflow("child-pending")
+    wf["run_id"] = None
+    wf["status"] = "PENDING"; wf["end_time"] = None; wf["output"] = None; wf["input"] = None
+    upsert_workflow(db_conn, wf)
+    db_conn.commit()
+
+    wf2 = _sample_workflow("child-pending")
+    wf2["run_id"] = "run-real-123"
+    wf2["status"] = "RUNNING"; wf2["end_time"] = None; wf2["output"] = None
+    upsert_workflow(db_conn, wf2)
+    db_conn.commit()
+
+    with db_conn.cursor() as cur:
+        cur.execute("SELECT run_id, status FROM workflows WHERE workflow_id=%s", ("child-pending",))
+        row = cur.fetchone()
+    assert row[0] == "run-real-123"
+    assert row[1] == "RUNNING"

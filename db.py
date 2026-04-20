@@ -275,9 +275,10 @@ INSERT INTO workflows (workflow_id, parent_workflow_id, workflow_name, run_id, s
 VALUES (%(workflow_id)s, %(parent_workflow_id)s, %(workflow_name)s, %(run_id)s, %(status)s, %(start_time)s, %(end_time)s, %(input)s, %(output)s)
 ON CONFLICT (workflow_id) DO UPDATE SET
     status = EXCLUDED.status,
+    run_id = COALESCE(EXCLUDED.run_id, workflows.run_id),
     end_time = EXCLUDED.end_time,
-    input = EXCLUDED.input,
-    output = EXCLUDED.output
+    input = COALESCE(EXCLUDED.input, workflows.input),
+    output = COALESCE(EXCLUDED.output, workflows.output)
 WHERE workflows.status NOT IN ('COMPLETED', 'FAILED', 'CANCELED', 'TERMINATED', 'TIMED_OUT')
 """
 
@@ -290,7 +291,6 @@ def upsert_workflow(conn: psycopg.Connection, workflow: dict[str, Any]) -> None:
     }
     with conn.cursor() as cur:
         cur.execute(UPSERT_WORKFLOW_SQL, params)
-    conn.commit()
 
 
 UPSERT_CHAT_WORKFLOW_SQL = """

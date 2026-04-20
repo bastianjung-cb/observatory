@@ -89,6 +89,7 @@ async def _ingest_workflow(
     for act in activities:
         act["workflow_id"] = workflow_id
     upsert_activities(observer_conn, activities)
+    observer_conn.commit()
 
     ingested = 1
 
