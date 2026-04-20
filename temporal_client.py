@@ -79,8 +79,21 @@ async def list_generation_batch_workflow_ids(
     return await _list_workflows_since(client, "generation-batch-", since)
 
 
+def _strip_null_chars(obj: Any) -> Any:
+    """Recursively remove U+0000 from any string values.
+    PostgreSQL JSONB rejects \\u0000 — stripping is the simplest safe fix."""
+    if isinstance(obj, str):
+        return obj.replace("\x00", "") if "\x00" in obj else obj
+    if isinstance(obj, dict):
+        return {k: _strip_null_chars(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_strip_null_chars(v) for v in obj]
+    return obj
+
+
 def _decode_payloads(payloads) -> Any | None:
-    """Decode payloads from a Temporal activity. Returns a single value if one payload, or a list if multiple."""
+    """Decode payloads from a Temporal activity. Returns a single value if one payload, or a list if multiple.
+    NUL characters are stripped from all string values — Postgres JSONB cannot store them."""
     try:
         if not payloads or len(payloads) == 0:
             return None
@@ -95,6 +108,7 @@ def _decode_payloads(payloads) -> Any | None:
                 except Exception as inner_exc:
                     logger.debug("UTF-8 decode failed for payload, using str(): %s", inner_exc)
                     decoded.append(str(p.data))
+        decoded = [_strip_null_chars(d) for d in decoded]
         if len(decoded) == 1:
             return decoded[0]
         return decoded
