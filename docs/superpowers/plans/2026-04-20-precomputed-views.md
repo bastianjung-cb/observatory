@@ -1343,3 +1343,37 @@ No code commit required.
 - Task 2 changes `INDEXES_SQL` to include MV indexes. `init_schema` runs `INDEXES_SQL` before `SEED_PRICING_SQL`, and the MV indexes reference MVs that also live in SCHEMA_SQL → MV must be created before its index. Confirm Task 2 step 1 appends MVs to SCHEMA_SQL (which runs first) and step 2 appends MV indexes to INDEXES_SQL (which runs second). Order preserved.
 - Task 5 is tiny but critical — missing commit = MVs never refresh in production.
 - Task 8 introduces a semantic drift for `getDailyColumnCreationCosts`: the existing implementation buckets by `activity.scheduled_time`, the new implementation does too (via `mv_daily_activity_stats.day`). ✓ matches spec.
+
+---
+
+## Task 10 verification outcome (2026-04-20)
+
+### Refresh timings (second+ tick, CONCURRENTLY)
+
+| MV | Refresh duration |
+|---|---|
+| `mv_chat_stats` | 0.09 s |
+| `mv_column_creation_stats` | 7.84 s |
+| `mv_daily_activity_stats` | 5.60 s |
+| **Total phase** | **~13.5 s** |
+
+First-tick (blocking) observed earlier was similar: 0.12 s / 8.04 s / 5.54 s. CONCURRENTLY overhead is small at this data scale (~1000 workflows, ~10k activities).
+
+### Page load HTTP checks
+
+| Page | Status | Time |
+|---|---|---|
+| `/chats` | 200 | 0.16 s |
+| `/column-creations` | 200 | 0.02 s |
+| `/dashboard` | 200 | 0.12 s |
+
+### Rollout notes
+
+- All three MVs populated on first sync after alembic migration applied. No user impact.
+- `CONCURRENTLY` verified on second+ tick.
+- Rollback procedure: revert page-query commits first, then `alembic downgrade -1` to drop MVs + added base-table indexes.
+
+### Known follow-ups
+
+- `mv_column_creation_stats` refresh is the dominant cost (7.8 s at dev scale). At real scale this grows linearly with cgw rows × descendant activities. If profiling shows it becomes painful (> ~30 s), swap to an incremental aggregate table — same read shape, no page rewrite needed.
+- Dashboard's `message_count` per user stays live (user preference). `total_chats` in `getCostSummary` also stays live. Both are cheap with existing indexes; worth revisiting if they become slow.
