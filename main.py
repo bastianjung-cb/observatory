@@ -295,34 +295,43 @@ async def sync_temporal_generation_data(observer_conn: psycopg.Connection) -> No
 
 
 async def run_sync() -> None:
-    """Run the full sync pipeline: app data + temporal data."""
+    """Run the full sync pipeline. Each phase is isolated: a failure logs +
+    rolls back and we continue. Watermarks guarantee the next invocation
+    resumes correctly."""
     logger.info("Connecting to observer DB...")
     observer_conn = psycopg.connect(OBSERVER_DATABASE_URL)
 
     try:
         init_schema(observer_conn)
+        observer_conn.commit()
 
-        # Sync app data (users, chats, messages, message_parts)
         try:
-            logger.info("Connecting to app DB...")
+            logger.info("Phase: sync_app_data")
             app_conn = psycopg.connect(APP_DATABASE_URL)
             try:
                 sync_app_data(app_conn, observer_conn)
             finally:
                 app_conn.close()
         except Exception:
-            logger.exception("App data sync failed, continuing with temporal sync")
+            logger.exception("Phase sync_app_data failed; continuing")
             observer_conn.rollback()
 
-        # Sync temporal data (chat workflows + activities)
-        await sync_temporal_data(observer_conn)
-
-        # Sync temporal data (generation batch workflows + activities)
-        await sync_temporal_generation_data(observer_conn)
-
-        # Enrich generation batches with app DB metadata
         try:
-            logger.info("Connecting to app DB for generation batch enrichment...")
+            logger.info("Phase: sync_temporal_data")
+            await sync_temporal_data(observer_conn)
+        except Exception:
+            logger.exception("Phase sync_temporal_data failed; continuing")
+            observer_conn.rollback()
+
+        try:
+            logger.info("Phase: sync_temporal_generation_data")
+            await sync_temporal_generation_data(observer_conn)
+        except Exception:
+            logger.exception("Phase sync_temporal_generation_data failed; continuing")
+            observer_conn.rollback()
+
+        try:
+            logger.info("Phase: sync_generation_batches")
             app_conn = psycopg.connect(APP_DATABASE_URL)
             try:
                 from app_sync import sync_generation_batches
@@ -330,7 +339,7 @@ async def run_sync() -> None:
             finally:
                 app_conn.close()
         except Exception:
-            logger.exception("Generation batch enrichment failed")
+            logger.exception("Phase sync_generation_batches failed; continuing")
             observer_conn.rollback()
 
     finally:
