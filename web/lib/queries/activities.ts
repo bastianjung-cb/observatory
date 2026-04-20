@@ -2,6 +2,7 @@ import pool from "@/lib/db";
 
 export interface WorkflowRow {
   workflow_id: string;
+  run_id: string | null;
   status: string;
   start_time: string;
   end_time: string | null;
@@ -11,6 +12,7 @@ export interface WorkflowRow {
 
 export interface ChildWorkflowRow {
   workflow_id: string;
+  run_id: string | null;
   workflow_name: string | null;
   status: string;
   start_time: string;
@@ -90,7 +92,7 @@ export async function getWorkflowForMessage(
   messageId: string
 ): Promise<WorkflowRow | null> {
   const result = await pool.query(
-    `SELECT w.workflow_id, w.status, w.start_time, w.end_time, w.parent_workflow_id, w.workflow_name
+    `SELECT w.workflow_id, w.run_id, w.status, w.start_time, w.end_time, w.parent_workflow_id, w.workflow_name
      FROM chat_workflows cw
      JOIN workflows w ON w.workflow_id = cw.workflow_id
      WHERE cw.message_id = $1
@@ -104,7 +106,7 @@ export async function getWorkflow(
   workflowId: string
 ): Promise<WorkflowRow | null> {
   const result = await pool.query(
-    `SELECT workflow_id, status, start_time, end_time, parent_workflow_id, workflow_name
+    `SELECT workflow_id, run_id, status, start_time, end_time, parent_workflow_id, workflow_name
      FROM workflows
      WHERE workflow_id = $1`,
     [workflowId]
@@ -116,7 +118,7 @@ export async function getChildWorkflows(
   parentWorkflowId: string
 ): Promise<ChildWorkflowRow[]> {
   const result = await pool.query(
-    `SELECT workflow_id, workflow_name, status, start_time, end_time
+    `SELECT workflow_id, run_id, workflow_name, status, start_time, end_time
      FROM workflows
      WHERE parent_workflow_id = $1
      ORDER BY start_time ASC`,
@@ -131,6 +133,7 @@ export async function getChildWorkflowsWithDetails(
   const result = await pool.query(
     `SELECT
        w.workflow_id,
+       w.run_id,
        w.workflow_name,
        w.status,
        w.start_time,
