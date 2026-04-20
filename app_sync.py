@@ -156,9 +156,25 @@ def sync_app_data(app_conn: psycopg.Connection, observer_conn: psycopg.Connectio
     sync_message_parts(app_conn, observer_conn)
 
 
-def sync_generation_batches(app_conn: psycopg.Connection, observer_conn: psycopg.Connection) -> int:
-    """Enrich column_generation_workflows with metadata from app DB."""
-    last_sync = get_last_sync(observer_conn, "generation_batches") or EPOCH
+def _fetch_batches_to_enrich(
+    app_conn: psycopg.Connection,
+    observer_conn: psycopg.Connection,
+    last_sync: datetime,
+) -> list[dict]:
+    """Fetch GenerationBatch rows that need enrichment.
+    Two sources, unioned in one app-DB query: updatedAt > last_sync (incremental)
+    and observer's NULL-metadata batch_ids (backfill for late-arrival races).
+    """
+    with observer_conn.cursor() as cur:
+        cur.execute(
+            "SELECT batch_id::text FROM column_generation_workflows WHERE metadata IS NULL"
+        )
+        backfill_ids = [row[0] for row in cur.fetchall()]
+
+    if len(backfill_ids) > 10000:
+        logger.warning(
+            "Unexpectedly large NULL-metadata backfill set: %d rows", len(backfill_ids)
+        )
 
     with app_conn.cursor() as cur:
         cur.execute(
@@ -168,42 +184,92 @@ def sync_generation_batches(app_conn: psycopg.Connection, observer_conn: psycopg
             'r.name as "columnName" '
             'FROM "GenerationBatch" gb '
             'LEFT JOIN "Resource" r ON r.id = gb."columnId" '
-            'WHERE gb."updatedAt" > %s ORDER BY gb."updatedAt"',
-            (last_sync,),
+            'WHERE gb."updatedAt" > %s OR gb.id::text = ANY(%s) '
+            'ORDER BY gb."updatedAt"',
+            (last_sync, backfill_ids),
         )
         rows = cur.fetchall()
 
-    updated = 0
-    for row in rows:
-        batch_id = str(row[0])
-        user_id = str(row[10]) if row[10] else None
-        metadata = {
+    return [
+        {
             "id": str(row[0]),
             "columnId": str(row[1]) if row[1] else None,
             "columnName": row[13],
             "prompt": row[2],
             "variant": row[3],
             "variantOptions": row[4],
-            "rows": row[5],
-            "totalRows": row[6],
-            "completedRows": row[7],
-            "failedRows": row[8],
+            "rows": row[5], "totalRows": row[6],
+            "completedRows": row[7], "failedRows": row[8],
             "status": row[9],
-            "userId": user_id,
+            "userId": str(row[10]) if row[10] else None,
             "createdAt": row[11].isoformat() if row[11] else None,
             "updatedAt": row[12].isoformat() if row[12] else None,
         }
+        for row in rows
+    ]
 
-        with observer_conn.cursor() as cur:
-            cur.execute(
-                "UPDATE column_generation_workflows SET user_id = %s, metadata = %s WHERE batch_id = %s::uuid",
-                (user_id, json.dumps(metadata), batch_id),
-            )
-            if cur.rowcount > 0:
-                updated += 1
-        observer_conn.commit()
 
-    now = datetime.now(timezone.utc)
-    update_last_sync(observer_conn, "generation_batches", now)
-    logger.info("Enriched %d generation batches (since %s)", updated, last_sync)
+def _apply_batch_enrichment(
+    observer_conn: psycopg.Connection, batches: list[dict]
+) -> int:
+    """Batched UPDATE of column_generation_workflows.metadata + user_id.
+    Returns rows updated. Caller commits."""
+    if not batches:
+        return 0
+    values_sql_parts = []
+    params: list = []
+    for b in batches:
+        values_sql_parts.append("(%s::uuid, %s::uuid, %s::jsonb)")
+        params.extend([b["id"], b.get("userId"), json.dumps(b)])
+    values_sql = ", ".join(values_sql_parts)
+    sql = (
+        "UPDATE column_generation_workflows cgw "
+        "SET user_id = COALESCE(v.user_id, cgw.user_id), "
+        "    metadata = COALESCE(v.metadata, cgw.metadata) "
+        f"FROM (VALUES {values_sql}) AS v(batch_id, user_id, metadata) "
+        "WHERE cgw.batch_id = v.batch_id"
+    )
+    with observer_conn.cursor() as cur:
+        cur.execute(sql, params)
+        return cur.rowcount
+
+
+def _find_orphan_batch_ids(
+    observer_conn: psycopg.Connection, fetched_batches: list[dict]
+) -> list[str]:
+    fetched_ids = {b["id"] for b in fetched_batches}
+    with observer_conn.cursor() as cur:
+        cur.execute(
+            "SELECT batch_id::text FROM column_generation_workflows WHERE metadata IS NULL"
+        )
+        null_ids = [row[0] for row in cur.fetchall()]
+    return sorted(bid for bid in null_ids if bid not in fetched_ids)
+
+
+def sync_generation_batches(
+    app_conn: psycopg.Connection, observer_conn: psycopg.Connection
+) -> int:
+    """Enrich column_generation_workflows.metadata/user_id from app DB.
+    Watermark + NULL-metadata backfill so the race between Temporal-path insert
+    and app-path enrichment can't permanently strand a cgw row.
+    """
+    last_sync = get_last_sync(observer_conn, "generation_batches") or EPOCH
+    tick_start = datetime.now(timezone.utc)
+
+    batches = _fetch_batches_to_enrich(app_conn, observer_conn, last_sync)
+    updated = _apply_batch_enrichment(observer_conn, batches)
+
+    orphans = _find_orphan_batch_ids(observer_conn, batches)
+    if orphans:
+        logger.warning(
+            "Orphan column_generation_workflows rows (batch_id not in app DB): %s",
+            ", ".join(orphans),
+        )
+
+    update_last_sync(observer_conn, "generation_batches", tick_start)
+    observer_conn.commit()
+    logger.info(
+        "Enriched %d batches (fetched %d, orphans %d, since %s, watermark→%s)",
+        updated, len(batches), len(orphans), last_sync, tick_start,
+    )
     return updated
