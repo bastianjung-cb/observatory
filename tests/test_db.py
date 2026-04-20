@@ -586,3 +586,21 @@ def test_upsert_workflow_run_id_fills_in_when_previously_null(db_conn):
         row = cur.fetchone()
     assert row[0] == "run-real-123"
     assert row[1] == "RUNNING"
+
+
+def test_get_terminal_workflow_ids_returns_only_terminal_subset(db_conn):
+    from db import init_schema, upsert_workflow, get_terminal_workflow_ids
+    init_schema(db_conn)
+    upsert_workflow(db_conn, {**_sample_workflow("wf-done"), "status": "COMPLETED"})
+    upsert_workflow(db_conn, {**_sample_workflow("wf-failed"), "status": "FAILED"})
+    upsert_workflow(db_conn, {**_sample_workflow("wf-running"), "status": "RUNNING", "end_time": None, "output": None})
+    db_conn.commit()
+
+    result = get_terminal_workflow_ids(db_conn, ["wf-done", "wf-failed", "wf-running", "wf-missing"])
+    assert result == {"wf-done", "wf-failed"}
+
+
+def test_get_terminal_workflow_ids_empty_input(db_conn):
+    from db import init_schema, get_terminal_workflow_ids
+    init_schema(db_conn)
+    assert get_terminal_workflow_ids(db_conn, []) == set()

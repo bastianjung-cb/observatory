@@ -364,6 +364,21 @@ def is_workflow_terminal(conn: psycopg.Connection, workflow_id: str) -> bool:
     return row[0] in TERMINAL_STATUSES
 
 
+def get_terminal_workflow_ids(
+    conn: psycopg.Connection, workflow_ids: list[str]
+) -> set[str]:
+    """Return the subset of workflow_ids already in a terminal status in observer."""
+    if not workflow_ids:
+        return set()
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT workflow_id FROM workflows "
+            "WHERE workflow_id = ANY(%s) AND status = ANY(%s)",
+            (workflow_ids, list(TERMINAL_STATUSES)),
+        )
+        return {row[0] for row in cur.fetchall()}
+
+
 def get_last_sync(conn: psycopg.Connection, entity: str) -> datetime | None:
     with conn.cursor() as cur:
         cur.execute(
