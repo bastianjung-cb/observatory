@@ -49,6 +49,7 @@ SELECT
   cgw.workflow_id                                                AS workflow_id,
   cgw.batch_id                                                   AS batch_id,
   cgw.user_id                                                    AS user_id,
+  w.run_id                                                       AS run_id,
   w.status                                                       AS status,
   w.start_time                                                   AS start_time,
   w.end_time                                                     AS end_time,
@@ -77,7 +78,7 @@ LEFT JOIN activities a
   ON a.activity_type = 'invokeModel'
   AND (a.workflow_id = cgw.workflow_id OR a.workflow_id = child.workflow_id)
 LEFT JOIN model_pricing mp ON mp.model_id = a.input->>'modelId'
-GROUP BY cgw.workflow_id, cgw.batch_id, cgw.user_id, w.status, w.start_time, w.end_time, cgw.metadata
+GROUP BY cgw.workflow_id, cgw.batch_id, cgw.user_id, w.run_id, w.status, w.start_time, w.end_time, cgw.metadata
 WITH NO DATA;
 """
 

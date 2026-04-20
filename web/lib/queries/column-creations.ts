@@ -122,6 +122,7 @@ async function _getColumnCreations(
     SELECT
        cgw.batch_id,
        cgw.workflow_id,
+       cgw.run_id,
        cgw.column_name,
        cgw.prompt,
        cgw.variant,
