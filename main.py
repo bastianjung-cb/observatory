@@ -155,6 +155,7 @@ async def sync_temporal_data(observer_conn: psycopg.Connection) -> None:
             message_id = _extract_message_id(wf_id)
             if message_id:
                 upsert_chat_workflow(observer_conn, wf_id, message_id)
+                observer_conn.commit()
         except Exception:
             logger.exception("Failed to process workflow %s, skipping", wf_id)
             continue

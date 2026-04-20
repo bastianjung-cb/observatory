@@ -303,7 +303,6 @@ ON CONFLICT (workflow_id) DO NOTHING
 def upsert_chat_workflow(conn: psycopg.Connection, workflow_id: str, message_id: str) -> None:
     with conn.cursor() as cur:
         cur.execute(UPSERT_CHAT_WORKFLOW_SQL, {"workflow_id": workflow_id, "message_id": message_id})
-    conn.commit()
 
 
 UPSERT_COLUMN_GENERATION_WORKFLOW_SQL = """
