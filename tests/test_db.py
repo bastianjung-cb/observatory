@@ -193,6 +193,7 @@ def test_upsert_activities_inserts(db_conn):
     init_schema(db_conn)
     upsert_workflow(db_conn, _sample_workflow())
     upsert_activities(db_conn, [_sample_activity("1"), _sample_activity("2")])
+    db_conn.commit()
 
     with db_conn.cursor() as cur:
         cur.execute("SELECT count(*) FROM activities")
@@ -205,7 +206,9 @@ def test_upsert_activities_skips_duplicates(db_conn):
     init_schema(db_conn)
     upsert_workflow(db_conn, _sample_workflow())
     upsert_activities(db_conn, [_sample_activity("1")])
+    db_conn.commit()
     upsert_activities(db_conn, [_sample_activity("1")])  # Duplicate
+    db_conn.commit()
 
     with db_conn.cursor() as cur:
         cur.execute("SELECT count(*) FROM activities")
@@ -422,3 +425,71 @@ def test_insert_message_parts_skips_duplicates(db_conn):
     with db_conn.cursor() as cur:
         cur.execute("SELECT count(*) FROM message_parts")
         assert cur.fetchone()[0] == 1
+
+
+def test_upsert_activity_updates_non_terminal_status(db_conn):
+    from db import init_schema, upsert_workflow, upsert_activities
+    init_schema(db_conn)
+    upsert_workflow(db_conn, _sample_workflow("chat-wf-1"))
+    db_conn.commit()
+
+    upsert_activities(db_conn, [{
+        "workflow_id": "chat-wf-1", "activity_id": "42", "activity_type": "invokeModel",
+        "status": "SCHEDULED", "attempt": 1,
+        "scheduled_time": datetime(2026, 1, 1, tzinfo=timezone.utc),
+        "started_time": None, "completed_time": None,
+        "input": {"prompt": "x"}, "output": None,
+    }])
+    db_conn.commit()
+    upsert_activities(db_conn, [{
+        "workflow_id": "chat-wf-1", "activity_id": "42", "activity_type": "invokeModel",
+        "status": "COMPLETED", "attempt": 1,
+        "scheduled_time": datetime(2026, 1, 1, tzinfo=timezone.utc),
+        "started_time": datetime(2026, 1, 1, 0, 0, 1, tzinfo=timezone.utc),
+        "completed_time": datetime(2026, 1, 1, 0, 0, 5, tzinfo=timezone.utc),
+        "input": {"prompt": "x"}, "output": {"response": "y"},
+    }])
+    db_conn.commit()
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "SELECT status, output FROM activities WHERE workflow_id=%s AND activity_id=%s",
+            ("chat-wf-1", "42"),
+        )
+        row = cur.fetchone()
+    assert row[0] == "COMPLETED"
+    assert row[1] == {"response": "y"}
+
+
+def test_upsert_activity_does_not_regress_terminal_status(db_conn):
+    from db import init_schema, upsert_workflow, upsert_activities
+    init_schema(db_conn)
+    upsert_workflow(db_conn, _sample_workflow("chat-wf-2"))
+    db_conn.commit()
+
+    upsert_activities(db_conn, [{
+        "workflow_id": "chat-wf-2", "activity_id": "7", "activity_type": "invokeModel",
+        "status": "COMPLETED", "attempt": 1,
+        "scheduled_time": datetime(2026, 1, 1, tzinfo=timezone.utc),
+        "started_time": datetime(2026, 1, 1, 0, 0, 1, tzinfo=timezone.utc),
+        "completed_time": datetime(2026, 1, 1, 0, 0, 5, tzinfo=timezone.utc),
+        "input": None, "output": {"ok": True},
+    }])
+    db_conn.commit()
+    upsert_activities(db_conn, [{
+        "workflow_id": "chat-wf-2", "activity_id": "7", "activity_type": "invokeModel",
+        "status": "SCHEDULED", "attempt": 1,
+        "scheduled_time": datetime(2026, 1, 1, tzinfo=timezone.utc),
+        "started_time": None, "completed_time": None,
+        "input": None, "output": None,
+    }])
+    db_conn.commit()
+
+    with db_conn.cursor() as cur:
+        cur.execute(
+            "SELECT status, output FROM activities WHERE workflow_id=%s AND activity_id=%s",
+            ("chat-wf-2", "7"),
+        )
+        row = cur.fetchone()
+    assert row[0] == "COMPLETED"
+    assert row[1] == {"ok": True}

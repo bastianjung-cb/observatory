@@ -328,20 +328,29 @@ def upsert_column_generation_workflow(conn: psycopg.Connection, data: dict[str, 
 UPSERT_ACTIVITY_SQL = """
 INSERT INTO activities (workflow_id, activity_id, activity_type, status, attempt, scheduled_time, started_time, completed_time, input, output)
 VALUES (%(workflow_id)s, %(activity_id)s, %(activity_type)s, %(status)s, %(attempt)s, %(scheduled_time)s, %(started_time)s, %(completed_time)s, %(input)s, %(output)s)
-ON CONFLICT (workflow_id, activity_id) DO NOTHING
+ON CONFLICT (workflow_id, activity_id) DO UPDATE SET
+    status = EXCLUDED.status,
+    attempt = EXCLUDED.attempt,
+    started_time = EXCLUDED.started_time,
+    completed_time = EXCLUDED.completed_time,
+    output = EXCLUDED.output
+WHERE activities.status NOT IN ('COMPLETED', 'FAILED', 'CANCELED', 'TERMINATED', 'TIMED_OUT')
 """
 
 
 def upsert_activities(conn: psycopg.Connection, activities: list[dict[str, Any]]) -> None:
+    if not activities:
+        return
+    params_list = [
+        {
+            **a,
+            "input": json.dumps(a["input"]) if a["input"] is not None else None,
+            "output": json.dumps(a["output"]) if a["output"] is not None else None,
+        }
+        for a in activities
+    ]
     with conn.cursor() as cur:
-        for activity in activities:
-            params = {
-                **activity,
-                "input": json.dumps(activity["input"]) if activity["input"] is not None else None,
-                "output": json.dumps(activity["output"]) if activity["output"] is not None else None,
-            }
-            cur.execute(UPSERT_ACTIVITY_SQL, params)
-    conn.commit()
+        cur.executemany(UPSERT_ACTIVITY_SQL, params_list)
 
 
 def is_workflow_terminal(conn: psycopg.Connection, workflow_id: str) -> bool:
