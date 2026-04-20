@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any
@@ -36,10 +37,23 @@ from temporal_client import (
 )
 from temporalio.api.enums.v1 import EventType
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s",
+_LOG_FILE = os.environ.get("OBSERVER_LOG_FILE", "logs/sync.log")
+_LOG_MAX_BYTES = int(os.environ.get("OBSERVER_LOG_MAX_BYTES", str(10 * 1024 * 1024)))
+_LOG_BACKUP_COUNT = int(os.environ.get("OBSERVER_LOG_BACKUP_COUNT", "5"))
+
+_log_dir = os.path.dirname(_LOG_FILE)
+if _log_dir:
+    os.makedirs(_log_dir, exist_ok=True)
+
+_formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
+_file_handler = RotatingFileHandler(
+    _LOG_FILE, maxBytes=_LOG_MAX_BYTES, backupCount=_LOG_BACKUP_COUNT
 )
+_file_handler.setFormatter(_formatter)
+_stream_handler = logging.StreamHandler()
+_stream_handler.setFormatter(_formatter)
+
+logging.basicConfig(level=logging.INFO, handlers=[_file_handler, _stream_handler])
 logger = logging.getLogger(__name__)
 
 OBSERVER_DATABASE_URL = os.environ.get(
