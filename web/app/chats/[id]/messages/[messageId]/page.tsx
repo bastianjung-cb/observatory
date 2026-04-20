@@ -126,6 +126,7 @@ export default async function ActivityPage({
           { key: "T", action: "Bypass filter" },
           { key: "I", action: "invokeModel only" },
           { key: "R", action: "Reverse order" },
+          { key: "W", action: "Temporal UI" },
         ]} />
       </div>
 
@@ -137,6 +138,8 @@ export default async function ActivityPage({
           basePath={`/chats/${id}/messages/${messageId}`}
           backPath={`/chats/${id}`}
           parentWorkflowId={workflow.parent_workflow_id ?? undefined}
+          currentWorkflowId={workflow.workflow_id}
+          currentRunId={workflow.run_id}
         />
       </div>
     </div>

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/popover";
 import { useKeyboardNav } from "@/components/use-keyboard-nav";
 import { CopyButton } from "@/components/copy-button";
+import { openTemporalWorkflow } from "@/lib/temporal-url";
 
 interface Activity {
   activity_id: string;
@@ -486,6 +487,7 @@ function PromptView({
 
 interface ChildWorkflow {
   workflow_id: string;
+  run_id: string | null;
   workflow_name: string | null;
   status: string;
   start_time: string;
@@ -507,12 +509,16 @@ export function ActivitySteps({
   basePath,
   backPath,
   parentWorkflowId,
+  currentWorkflowId,
+  currentRunId,
 }: {
   activities: Activity[];
   childWorkflows?: ChildWorkflow[];
   basePath: string;
   backPath: string;
   parentWorkflowId?: string;
+  currentWorkflowId: string;
+  currentRunId: string | null;
 }) {
   const router = useRouter();
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -669,10 +675,22 @@ export function ActivitySteps({
         e.preventDefault();
         setInvokeOnly((prev) => !prev);
       }
+      if (e.key === "w" || e.key === "W") {
+        const item = displayItems[selectedIndex];
+        let wfId: string | null | undefined = currentWorkflowId;
+        let runId: string | null | undefined = currentRunId;
+        if (item && item.kind === "child") {
+          wfId = item.data.workflow_id;
+          runId = item.data.run_id;
+        }
+        if (openTemporalWorkflow(wfId, runId)) {
+          e.preventDefault();
+        }
+      }
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [expandedId]);
+  }, [expandedId, displayItems, selectedIndex, currentWorkflowId, currentRunId]);
 
   const selectedRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
