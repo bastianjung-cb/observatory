@@ -20,6 +20,7 @@ export async function runSync(): Promise<{ success: boolean; message: string }> 
           revalidatePath("/");
           revalidateTag("dashboard", { expire: 0 });
           revalidateTag("column-creations", { expire: 0 });
+          revalidateTag("chats", { expire: 0 });
           resolve({ success: true, message: stdout });
         }
       }
