@@ -93,16 +93,32 @@ _list_workflows_since(prefix, since):
 `since=None` on first tick after deploy results in a full retention scan. Accepted cost (user-approved: "OK if first run takes long as long as it succeeds"). Log WARN at start of that phase.
 
 ### Ingestion with checkpoint
+
+Both parsers (`parse_activities_from_history`, `parse_child_workflows_from_history`) build up state across events (SCHEDULED→COMPLETED, INITIATED→STARTED→COMPLETED) by keying partial entries in a dict. If progressive fetch returns only events after a watermark, a COMPLETED whose SCHEDULED was in a prior fetch has no matching key, and the transition is silently lost. **Both parsers must be seeded with observer's current non-terminal state before parsing a partial fetch.**
+
 ```
 _ingest_workflow(…, last_event_id):
     start = (last_event_id or 0) + 1
     events = await fetch_workflow_history(client, wf_id, run_id, start_event_id=start)
+
+    existing_activities = fetch_non_terminal_activities(conn, wf_id)       # dict[int, activity_entry]
+    existing_children   = fetch_non_terminal_children(conn, wf_id)         # dict[str, child_entry]
+
+    activities = parse_activities_from_history(events, seed=existing_activities)
+    children   = parse_child_workflows_from_history(events, seed=existing_children)
+
     max_event_id = max((e.event_id for e in events), default=last_event_id or 0)
-    … parse & upsert …
-    upsert_workflow(conn, {…, "last_event_id": max_event_id})  # same txn as activity writes
+    upsert_workflow(conn, {…, "last_event_id": max_event_id, "input": possibly_none, "output": possibly_none})
+    upsert_activities(conn, activities)
+    # recurse into children …
+    conn.commit()
 ```
 
-Checkpoint and activity writes share one transaction per workflow. On failure, neither advances — the next tick retries from the same floor.
+Parser keying change: `parse_child_workflows_from_history` keys its `initiated` dict by **child workflow_id** (not by event_id). All subsequent child events (`STARTED`, `COMPLETED`, `FAILED`, `CANCELED`, `TIMED_OUT`, `TERMINATED`) carry `attrs.workflow_execution.workflow_id`, which is stable across fetches. This makes seeding trivial: `seed = {row.workflow_id: {...} for row in existing_children}`.
+
+`parse_activities_from_history` continues keying by integer event_id (= the SCHEDULED event_id, stored in observer as `activity_id`). Seeding: `seed = {int(row.activity_id): {...} for row in existing_activities}`.
+
+Checkpoint and all writes share one transaction per workflow subtree. On failure, neither advances — the next tick retries from the same floor. Also: `UPSERT_WORKFLOW_SQL` must `COALESCE(EXCLUDED.input, workflows.input)` and same for `output`, because progressive fetch may skip the `WORKFLOW_EXECUTION_STARTED` event (always event_id=1) and leave `input=None` in the ingest payload — we must not clobber a previously-stored `input`.
 
 ### Parser state machine (children)
 
@@ -138,11 +154,13 @@ No rollback data migration. Old bad data is left in place (user-approved: "OK to
 ### `db.py`
 - `SCHEMA_SQL`: add `last_event_id BIGINT` to `workflows`.
 - `TERMINAL_STATUSES`: unchanged.
-- `UPSERT_WORKFLOW_SQL`: include `last_event_id = COALESCE(EXCLUDED.last_event_id, workflows.last_event_id)` in the DO UPDATE SET list.
+- `UPSERT_WORKFLOW_SQL`: in the DO UPDATE SET list, add `last_event_id = COALESCE(EXCLUDED.last_event_id, workflows.last_event_id)`, and change the existing `input` / `output` assignments to `input = COALESCE(EXCLUDED.input, workflows.input)` / `output = COALESCE(EXCLUDED.output, workflows.output)` so progressive fetches that miss `WORKFLOW_EXECUTION_STARTED`/`COMPLETED` don't clobber previously-stored values.
 - `UPSERT_ACTIVITY_SQL`: `DO NOTHING` → `DO UPDATE SET status = EXCLUDED.status, attempt = EXCLUDED.attempt, started_time = EXCLUDED.started_time, completed_time = EXCLUDED.completed_time, output = EXCLUDED.output WHERE activities.status NOT IN ('COMPLETED', 'FAILED', 'CANCELED', 'TERMINATED', 'TIMED_OUT')`.
 - `UPSERT_COLUMN_GENERATION_WORKFLOW_SQL`: `EXCLUDED.*` → `COALESCE(EXCLUDED.*, column_generation_workflows.*)`.
 - New: `get_terminal_workflow_ids(conn, workflow_ids: list[str]) -> set[str]`.
 - New: `get_last_event_ids(conn, workflow_ids: list[str]) -> dict[str, int | None]`.
+- New: `fetch_non_terminal_activities(conn, workflow_id: str) -> dict[int, dict]` — seed for `parse_activities_from_history`.
+- New: `fetch_non_terminal_children(conn, parent_workflow_id: str) -> dict[str, dict]` — seed for `parse_child_workflows_from_history`.
 - `upsert_workflow` / `upsert_chat_workflow` / `upsert_column_generation_workflow`: remove `conn.commit()` — caller commits once per ingested workflow (see `_ingest_workflow` note below), not per individual upsert.
 - `upsert_activities`: use `executemany(UPSERT_ACTIVITY_SQL, params_list)` — single round-trip.
 - Delete `is_workflow_terminal` (single-row helper) after all call sites switch to `get_terminal_workflow_ids`. Dead code; no need to keep.
@@ -160,8 +178,8 @@ No rollback data migration. Old bad data is left in place (user-approved: "OK to
 - `list_chat_workflow_ids(client, since=None)` → delegates to `_list_workflows_since(client, "chat-", since)`.
 - `list_generation_batch_workflow_ids(client, since=None)` → delegates with `"generation-batch-"`.
 - `fetch_workflow_history(client, workflow_id, run_id, start_event_id: int | None = None) -> list`: pass `start_event_id=start_event_id` to `handle.fetch_history_events(...)` if provided.
-- `parse_child_workflows_from_history`: add handlers for CANCELED, TIMED_OUT, TERMINATED child events; START_CHILD_FAILED; change catch-all to emit PENDING for never-STARTED children, RUNNING for started-but-open.
-- `parse_activities_from_history`: add handlers for CANCELED and TIMED_OUT.
+- `parse_child_workflows_from_history`: add handlers for CANCELED, TIMED_OUT, TERMINATED child events; START_CHILD_FAILED; change catch-all to emit PENDING for never-STARTED children, RUNNING for started-but-open. **Change keying from event_id to child workflow_id** so progressive fetches can seed the parser. New signature: `(events, seed: dict[str, dict] | None = None)`.
+- `parse_activities_from_history`: add handlers for CANCELED and TIMED_OUT. New signature: `(events, seed: dict[int, dict] | None = None)` — integer key is the SCHEDULED event_id, matching the `activity_id` column stored in observer.
 
 ### `main.py`
 - Remove `if wf["status"] not in TERMINAL_STATUSES: continue` in both sync functions.
@@ -239,14 +257,20 @@ logging.basicConfig(level=logging.INFO, handlers=[file_handler, stream_handler])
 - `test_upsert_activity_does_not_regress_terminal_status`
 - `test_upsert_column_generation_workflow_preserves_metadata`
 - `test_upsert_workflow_preserves_last_event_id`
+- `test_upsert_workflow_preserves_input_output_on_partial_reingest`
 - `test_get_terminal_workflow_ids_returns_only_terminal_subset`
 - `test_get_last_event_ids_returns_map_with_nulls`
+- `test_fetch_non_terminal_activities_returns_dict_keyed_by_int_activity_id`
+- `test_fetch_non_terminal_children_returns_dict_keyed_by_workflow_id`
 
 **`tests/test_temporal_client.py` (extend, parsers only — no live Temporal):**
 - `test_parse_child_workflows_handles_canceled_timed_out_terminated`
 - `test_parse_child_workflows_marks_start_failed`
 - `test_parse_child_workflows_open_children_are_pending_not_running`
+- `test_parse_child_workflows_keyed_by_workflow_id`
+- `test_parse_child_workflows_seeded_from_observer_state_completes_transition` — seeded `initiated` dict + incoming FAILED event matches by workflow_id and emits the transition.
 - `test_parse_activities_handles_canceled_timed_out`
+- `test_parse_activities_seeded_from_observer_state_completes_transition` — seeded `scheduled` dict + incoming COMPLETED event matches by event_id.
 - `test_fetch_workflow_history_passes_start_event_id`
 
 ### Fixture
