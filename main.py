@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import urllib.request
+import urllib.error
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from datetime import datetime, timezone
@@ -373,12 +375,26 @@ async def run_sync() -> None:
         observer_conn.close()
 
 
+def _notify_revalidate() -> None:
+    port = os.getenv("DEPLOY_PORT", "9100")
+    secret = os.getenv("REVALIDATE_SECRET", "")
+    url = f"http://localhost:{port}/api/revalidate"
+    req = urllib.request.Request(url, method="POST", data=b"")
+    req.add_header("Authorization", f"Bearer {secret}")
+    try:
+        urllib.request.urlopen(req, timeout=10)
+        logger.info("Cache revalidated")
+    except Exception as exc:
+        logger.warning("Cache revalidation failed: %s", exc)
+
+
 def main() -> None:
     import sys
     if "--skip-migrations" not in sys.argv:
         logger.info("Running migrations...")
         run_migrations(OBSERVER_DATABASE_URL)
     asyncio.run(run_sync())
+    _notify_revalidate()
 
 
 if __name__ == "__main__":
