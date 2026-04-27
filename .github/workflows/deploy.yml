@@ -1,0 +1,72 @@
+name: Deploy to Azure Container Apps
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to build and deploy (defaults to short git SHA)."
+        required: false
+        type: string
+
+permissions:
+  id-token: write   # required for OIDC token exchange with Azure
+  contents: read
+
+env:
+  ACR_NAME: cellbyteregistry1
+  IMAGE_REPO: observatory
+  AZ_RESOURCE_GROUP: cellbyte-staging
+  AZ_CONTAINERAPP: cellbyte-staging-observatory
+  # Build-time vars baked into the Next.js bundle via next.config.ts.
+  TEMPORAL_UI_URL: https://cellbyte-staging-temporal-ui.agreeablewave-cb495be2.northeurope.azurecontainerapps.io
+  TEMPORAL_NAMESPACE: default
+  APP_URL: https://staging-platform.cellbyte.com/
+  INSTANCE_NAME: staging
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve image tag
+        id: tag
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build & push image (az acr build)
+        run: |
+          az acr build \
+            --registry "$ACR_NAME" \
+            --image "${IMAGE_REPO}:${{ steps.tag.outputs.tag }}" \
+            --image "${IMAGE_REPO}:latest" \
+            --build-arg TEMPORAL_UI_URL="$TEMPORAL_UI_URL" \
+            --build-arg TEMPORAL_NAMESPACE="$TEMPORAL_NAMESPACE" \
+            --build-arg APP_URL="$APP_URL" \
+            --build-arg INSTANCE_NAME="$INSTANCE_NAME" \
+            --file Dockerfile .
+
+      - name: Update container app to new image
+        run: |
+          az containerapp update \
+            --name "$AZ_CONTAINERAPP" \
+            --resource-group "$AZ_RESOURCE_GROUP" \
+            --image "${ACR_NAME}.azurecr.io/${IMAGE_REPO}:${{ steps.tag.outputs.tag }}"
+
+      - name: Print deployed revision
+        run: |
+          az containerapp revision list \
+            --name "$AZ_CONTAINERAPP" \
+            --resource-group "$AZ_RESOURCE_GROUP" \
+            --query "[?properties.active].{name:name, image:properties.template.containers[0].image, replicas:properties.replicas}" \
+            -o table
